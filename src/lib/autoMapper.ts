@@ -1,6 +1,7 @@
 import { TEMPLATE_FIELDS } from './templateFields';
 import type { TemplateFieldConfig } from './templateFields';
 import type { FieldMapping, MappingValueType, PromptNeeds, UserPrompts } from '../types';
+import { loadLearnings, getLearningsForField } from './learnings';
 
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[\[\]_\-\(\)#]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -199,7 +200,16 @@ export function buildMappings(
       }
     }
 
-    // 10. Generic fuzzy matching
+    // 10. Learned synonyms — check before generic fuzzy (highest priority after special rules)
+    const learnedHeaders = getLearningsForField(field, loadLearnings());
+    for (const learned of learnedHeaders) {
+      const match = headers.find(h => h.toLowerCase().trim() === learned.toLowerCase().trim());
+      if (match) {
+        return { templateField: field, value: { type: 'column', name: match }, confidence: 'exact' };
+      }
+    }
+
+    // 11. Generic fuzzy matching
     let bestHeader = '';
     let bestScore = 0;
     for (const h of headers) {

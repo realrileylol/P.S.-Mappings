@@ -26,7 +26,7 @@ export interface ParsedFile {
   fileName: string;
 }
 
-export type AppStep = 'upload' | 'prompts' | 'mapping' | 'output';
+export type AppStep = 'upload' | 'prompts' | 'mapping' | 'learning' | 'output';
 
 export interface PromptNeeds {
   needsFacilityId: boolean;
