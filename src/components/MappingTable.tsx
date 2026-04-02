@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronRight, Lock, Zap, AlertCircle, CheckCircle2, HelpCircle, Hash, Brain } from 'lucide-react';
 import type { FieldMapping, MappingValueType, ConfidenceLevel } from '../types';
 import type { SessionEdit } from '../lib/learnings';
@@ -219,8 +219,40 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
 
 export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch, onMappingsChange, onContinue, onProfileOverride, onNewFile }: Props) {
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
-  // Track session edits: templateField → { originalHeader, correctedHeader }
   const editsRef = useRef<Map<string, SessionEdit>>(new Map());
+
+  // Real-time: auto-fill TotalInvoiceAmount + AmountPaid when qty × price both mapped
+  useEffect(() => {
+    const qtyM  = mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity');
+    const priceM = mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice');
+
+    const qtyCol   = qtyM?.value.type   === 'column' ? qtyM.value.name   : null;
+    const priceCol = priceM?.value.type === 'column' ? priceM.value.name : null;
+
+    if (!qtyCol || !priceCol) return;
+
+    const expr = `TRY_CAST([${qtyCol}] AS FLOAT) * TRY_CAST([${priceCol}] AS FLOAT)`;
+    const desc = `[${qtyCol}] × [${priceCol}]`;
+    const computed = { type: 'computed' as const, expression: expr, description: desc };
+
+    let changed = false;
+    const next = mappings.map(m => {
+      // Only fill if currently null or was previously auto-computed (not manually set to a real column)
+      if (
+        (m.templateField === 'TotalInvoiceAmount' || m.templateField === 'AmountPaid') &&
+        (m.value.type === 'null' || m.confidence === 'computed')
+      ) {
+        changed = true;
+        return { ...m, value: computed, confidence: 'computed' as const };
+      }
+      return m;
+    });
+
+    if (changed) onMappingsChange(next);
+  }, [
+    mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity')?.value,
+    mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice')?.value,
+  ]);
 
   const nullCount = mappings.filter(m => m.value.type === 'null').length;
   const matchedCount = mappings.filter(m => m.value.type !== 'null').length;
