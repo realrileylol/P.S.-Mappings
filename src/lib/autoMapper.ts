@@ -214,6 +214,15 @@ export function buildMappings(
       return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
+    // 2.5 Learned synonyms — checked FIRST before all other rules so corrections always stick
+    const learnedHeaders = getLearningsForField(field, loadLearnings());
+    for (const learned of learnedHeaders) {
+      const match = headers.find(h => h.toLowerCase().trim() === learned.toLowerCase().trim());
+      if (match) {
+        return { templateField: field, value: { type: 'column', name: match }, confidence: 'exact' };
+      }
+    }
+
     // 3. Facility fields
     if (config.isFacility) {
       if (field === 'FacilityID') {
@@ -304,16 +313,7 @@ export function buildMappings(
       }
     }
 
-    // 10. Learned synonyms
-    const learnedHeaders = getLearningsForField(field, loadLearnings());
-    for (const learned of learnedHeaders) {
-      const match = headers.find(h => h.toLowerCase().trim() === learned.toLowerCase().trim());
-      if (match) {
-        return { templateField: field, value: { type: 'column', name: match }, confidence: 'exact' };
-      }
-    }
-
-    // 11. Generic fuzzy matching
+    // 10. Generic fuzzy matching
     let bestHeader = '';
     let bestScore = 0;
     for (const h of headers) {
