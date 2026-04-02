@@ -5,9 +5,10 @@ import type { SessionEdit } from '../lib/learnings';
 import type { ProfileMatch } from '../lib/profiles';
 import { MatchedProfileBanner } from './ProfileBanner';
 import { NewFileButton } from './NewFileButton';
-import { detectDateRangeInColumn } from '../lib/autoMapper';
+import { detectDateRangeInColumn, detectExcelSerialDatesInColumn } from '../lib/autoMapper';
 
 const DATE_FIELDS = new Set(['InvoiceDate', 'PODate', 'PostingDate']);
+const EXCEL_DATE_FIELDS = new Set(['InvoiceDate', 'PODate']);
 
 interface Props {
   mappings: FieldMapping[];
@@ -102,15 +103,23 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
     if (val === '__null__') {
       newValue = { type: 'null' };
     } else {
-      // If this is a date field, check if the chosen column contains range values
+      // If this is a date field, check for range or Excel serial values
       if (DATE_FIELDS.has(mapping.templateField)) {
         const resolvedDate = detectDateRangeInColumn(val, sampleData);
         if (resolvedDate) {
-          newValue = { type: 'literal', value: resolvedDate };
-          onChange({ ...mapping, value: newValue, confidence: 'hardcoded' }, originalHeader);
+          onChange({ ...mapping, value: { type: 'literal', value: resolvedDate }, confidence: 'hardcoded' }, originalHeader);
           setEditing(false);
           return;
         }
+      }
+      if (EXCEL_DATE_FIELDS.has(mapping.templateField) && detectExcelSerialDatesInColumn(val, sampleData)) {
+        onChange({
+          ...mapping,
+          value: { type: 'computed', expression: `DATEADD(day, [${val}] - 2, '1900-01-01')`, description: `DATEADD([${val}])` },
+          confidence: 'computed',
+        }, originalHeader);
+        setEditing(false);
+        return;
       }
       newValue = { type: 'column', name: val };
     }

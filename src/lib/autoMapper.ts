@@ -80,6 +80,31 @@ export function detectDateRangeInColumn(
   return null;
 }
 
+// ── Excel serial date detection ─────────────────────────────────────────────
+// Excel stores dates as integers counting days since 1900-01-01
+// e.g. 46066 = 02-12-2026
+// Valid range: 40000–60000 covers roughly 2009–2064
+function isExcelSerial(value: string): boolean {
+  const n = Number(value.trim());
+  return Number.isInteger(n) && n >= 40000 && n <= 60000;
+}
+
+export function detectExcelSerialDatesInColumn(
+  header: string,
+  rows: Record<string, string>[]
+): boolean {
+  const samples = rows.slice(0, 5).map(r => String(r[header] ?? '').trim()).filter(Boolean);
+  return samples.length > 0 && samples.every(isExcelSerial);
+}
+
+function makeExcelDateComputed(columnName: string): MappingValueType {
+  return {
+    type: 'computed',
+    expression: `DATEADD(day, [${columnName}] - 2, '1900-01-01')`,
+    description: `DATEADD([${columnName}])`,
+  };
+}
+
 // ── Price computation expression ────────────────────────────────────────────
 function makePriceComputed(totalCol: string, qtyCol: string): MappingValueType {
   return {
@@ -213,18 +238,26 @@ export function buildMappings(
       return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
-    // 4. Date fields — handle range values
-    if (config.isDate && field === 'InvoiceDate') {
-      // If we already resolved a range date, use it as a hardcoded literal
+    // 4. Date fields — handle range values and Excel serial dates
+    if (config.isDate && (field === 'InvoiceDate' || field === 'PODate')) {
+      // Date range already resolved (e.g. "03/2025-01/2026" → "01-31-2026")
       if (promptNeeds.resolvedDate) {
         return { templateField: field, value: { type: 'literal', value: promptNeeds.resolvedDate }, confidence: 'hardcoded' };
       }
       if (!promptNeeds.needsDate && promptNeeds.detectedDate) {
+        // Check for Excel serial dates in the column
+        if (_rows.length > 0 && detectExcelSerialDatesInColumn(promptNeeds.detectedDate, _rows)) {
+          return { templateField: field, value: makeExcelDateComputed(promptNeeds.detectedDate), confidence: 'computed' };
+        }
         return { templateField: field, value: { type: 'column', name: promptNeeds.detectedDate }, confidence: 'high' };
       }
       if (userPrompts.date) {
         return { templateField: field, value: { type: 'literal', value: userPrompts.date }, confidence: 'hardcoded' };
       }
+      return { templateField: field, value: { type: 'null' }, confidence: 'none' };
+    }
+    // PostingDate stays as a mirror — handled in second pass
+    if (config.isDate && field === 'PostingDate') {
       return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
