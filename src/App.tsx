@@ -43,14 +43,14 @@ export default function App() {
       match?.profile.name ?? supplierFromData ?? file.fileName.replace(/\.[^/.]+$/, '')
     );
 
-    const needs = detectPromptNeeds(file.headers);
+    const needs = detectPromptNeeds(file.headers, file.rows);
     setPromptNeeds(needs);
 
     if (match) {
       // Apply profile directly — skip prompts if profile covers facility/date
       const profileMappings = applyProfile(match.profile, file.headers);
       // Merge: fill in any null fields from autoMapper
-      const autoMappings = buildMappings(file.headers, {}, needs);
+      const autoMappings = buildMappings(file.headers, {}, needs, file.rows);
       const merged = profileMappings.map((pm, i) =>
         pm.value.type === 'null' ? autoMappings[i] : pm
       );
@@ -61,7 +61,7 @@ export default function App() {
 
     const anyNeeded = needs.needsFacilityId || needs.needsFacilityName || needs.needsDate || needs.needsSupplierName;
     if (!anyNeeded) {
-      const built = buildMappings(file.headers, {}, needs);
+      const built = buildMappings(file.headers, {}, needs, file.rows);
       setMappings(built);
       setStep('mapping');
     } else {
@@ -71,7 +71,7 @@ export default function App() {
 
   function handlePromptsComplete(prompts: UserPrompts) {
     if (!parsedFile || !promptNeeds) return;
-    const built = buildMappings(parsedFile.headers, prompts, promptNeeds);
+    const built = buildMappings(parsedFile.headers, prompts, promptNeeds, parsedFile.rows);
     setMappings(built);
     setStep('mapping');
   }

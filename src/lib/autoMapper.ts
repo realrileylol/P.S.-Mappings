@@ -21,12 +21,9 @@ function similarityScore(a: string, b: string): number {
 
 function matchHeaderToField(header: string, config: TemplateFieldConfig): number {
   const nh = normalize(header);
-  // Exact field name match
   if (normalize(config.field) === nh) return 1.0;
   if (!config.synonyms) return 0;
-  // Conv factor override: if header contains 'conv' → very high score for isConvFactor field
   if (config.isConvFactor && /conv/i.test(header)) return 0.95;
-  // Check synonyms
   let best = 0;
   for (const syn of config.synonyms) {
     const score = similarityScore(nh, syn);
@@ -41,7 +38,11 @@ function isConvHeader(header: string): boolean {
 
 function isTotalHeader(header: string): boolean {
   const n = normalize(header);
-  return ['ext sales', 'extended amount', 'extended price', 'sales dollars', 'total amount', 'total'].some(t => n.includes(t));
+  return [
+    'ext sales', 'extended amount', 'extended price', 'sales dollars',
+    'total amount', 'total', 'extended invoice', 'invoice sales',
+    'extended sales', 'invoice total',
+  ].some(t => n.includes(t));
 }
 
 function isQuantityHeader(header: string): boolean {
@@ -54,7 +55,79 @@ function isPriceHeader(header: string): boolean {
   return ['price', 'unit price', 'cost'].some(t => n.includes(t));
 }
 
-export function detectPromptNeeds(headers: string[]): PromptNeeds {
+// ── Date range parser ───────────────────────────────────────────────────────
+// Handles values like "03/2025-01/2026" → "01-31-2026"
+function parseDateRangeValue(value: string): string | null {
+  const match = value.match(/(\d{1,2})[\/\-](\d{4})\s*[-–]\s*(\d{1,2})[\/\-](\d{4})/);
+  if (!match) return null;
+  const endMonth = parseInt(match[3], 10);
+  const endYear = parseInt(match[4], 10);
+  const lastDay = new Date(endYear, endMonth, 0).getDate();
+  const mm = String(endMonth).padStart(2, '0');
+  const dd = String(lastDay).padStart(2, '0');
+  return `${mm}-${dd}-${endYear}`;
+}
+
+function detectDateRangeInColumn(
+  header: string,
+  rows: Record<string, string>[]
+): string | null {
+  for (const row of rows.slice(0, 5)) {
+    const val = String(row[header] ?? '').trim();
+    const parsed = parseDateRangeValue(val);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+// ── Price computation expression ────────────────────────────────────────────
+function makePriceComputed(totalCol: string, qtyCol: string): MappingValueType {
+  return {
+    type: 'computed',
+    expression: `TRY_CAST([${totalCol}] AS FLOAT) / NULLIF(TRY_CAST([${qtyCol}] AS FLOAT), 0)`,
+    description: `[${totalCol}] ÷ [${qtyCol}]`,
+  };
+}
+
+// After all fields are mapped, ensure price is computed if total+qty exist but no price
+function resolveComputedPrice(mappings: FieldMapping[]): FieldMapping[] {
+  const totalMapping = mappings.find(m => m.templateField === 'TotalInvoiceAmount');
+  const qtyMapping = mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity');
+  const priceMapping = mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice');
+  const poPriceMapping = mappings.find(m => m.templateField === 'POUnitofMeasurePrice');
+
+  const totalCol = totalMapping?.value.type === 'column' ? totalMapping.value.name : null;
+  const qtyCol = qtyMapping?.value.type === 'column' ? qtyMapping.value.name : null;
+
+  if (!totalCol || !qtyCol) return mappings;
+
+  // Only compute if price isn't already a direct column or computed
+  const priceNeedsCompute =
+    !priceMapping ||
+    priceMapping.value.type === 'null' ||
+    (priceMapping.value.type === 'column' && isTotalHeader(priceMapping.value.name));
+
+  if (!priceNeedsCompute) return mappings;
+
+  const computed = makePriceComputed(totalCol, qtyCol);
+
+  return mappings.map(m => {
+    if (m.templateField === 'InvoiceUnitofMeasurePrice' && priceNeedsCompute) {
+      return { ...m, value: computed, confidence: 'computed' as const };
+    }
+    if (m.templateField === 'POUnitofMeasurePrice' &&
+      (!poPriceMapping || poPriceMapping.value.type === 'null' ||
+        (poPriceMapping.value.type === 'column' && isTotalHeader(poPriceMapping.value.name)))) {
+      return { ...m, value: computed, confidence: 'computed' as const };
+    }
+    return m;
+  });
+}
+
+export function detectPromptNeeds(
+  headers: string[],
+  rows: Record<string, string>[] = []
+): PromptNeeds {
   const needs: PromptNeeds = {
     needsFacilityId: true,
     needsFacilityName: true,
@@ -64,7 +137,6 @@ export function detectPromptNeeds(headers: string[]): PromptNeeds {
 
   for (const h of headers) {
     const n = normalize(h);
-    // Facility detection
     if (['facility id', 'facility_id', 'account number', 'customer id', 'site id'].some(s => n.includes(s))) {
       needs.needsFacilityId = false;
       needs.detectedFacilityId = h;
@@ -73,12 +145,19 @@ export function detectPromptNeeds(headers: string[]): PromptNeeds {
       needs.needsFacilityName = false;
       needs.detectedFacilityName = h;
     }
-    // Date detection
     if (['date', 'invoice date', 'po date', 'posting date', 'order date'].some(s => n.includes(s))) {
-      needs.needsDate = false;
-      needs.detectedDate = h;
+      // Check if values are date ranges — if so, parse and hardcode
+      const rangeDate = rows.length > 0 ? detectDateRangeInColumn(h, rows) : null;
+      if (rangeDate) {
+        // Treat as a hardcoded date — no column mapping needed
+        needs.needsDate = false;
+        needs.detectedDate = h;
+        needs.resolvedDate = rangeDate; // parsed last-day-of-range
+      } else {
+        needs.needsDate = false;
+        needs.detectedDate = h;
+      }
     }
-    // Supplier detection
     if (['vendor name', 'supplier name', 'distributor name', 'vendor', 'supplier', 'distributor'].some(s => n === s || n.includes(s))) {
       needs.needsSupplierName = false;
       needs.detectedSupplierName = h;
@@ -91,12 +170,12 @@ export function detectPromptNeeds(headers: string[]): PromptNeeds {
 export function buildMappings(
   headers: string[],
   userPrompts: UserPrompts,
-  promptNeeds: PromptNeeds
+  promptNeeds: PromptNeeds,
+  _rows: Record<string, string>[] = []
 ): FieldMapping[] {
-  // Pre-classify headers
   const convHeaders = headers.filter(isConvHeader);
   const totalHeaders = headers.filter(isTotalHeader);
-  const quantityHeaders = headers.filter(h => isQuantityHeader(h) && !isConvHeader(h));
+
   const mappings: FieldMapping[] = TEMPLATE_FIELDS.map(config => {
     const { field } = config;
 
@@ -105,9 +184,8 @@ export function buildMappings(
       return { templateField: field, value: { type: 'null' }, confidence: 'always-null', locked: true };
     }
 
-    // 2. Mirror fields — resolved after primary
+    // 2. Mirror fields — resolved in second pass
     if (config.mirrorOf) {
-      // Will be resolved after first pass
       return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
@@ -135,8 +213,12 @@ export function buildMappings(
       return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
-    // 4. Date fields
+    // 4. Date fields — handle range values
     if (config.isDate && field === 'InvoiceDate') {
+      // If we already resolved a range date, use it as a hardcoded literal
+      if (promptNeeds.resolvedDate) {
+        return { templateField: field, value: { type: 'literal', value: promptNeeds.resolvedDate }, confidence: 'hardcoded' };
+      }
       if (!promptNeeds.needsDate && promptNeeds.detectedDate) {
         return { templateField: field, value: { type: 'column', name: promptNeeds.detectedDate }, confidence: 'high' };
       }
@@ -157,50 +239,39 @@ export function buildMappings(
       return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
-    // 6. Conv factor field — always prefer conv headers
+    // 6. Conv factor
     if (config.isConvFactor) {
       if (convHeaders.length > 0) {
         return { templateField: field, value: { type: 'column', name: convHeaders[0] }, confidence: 'high' };
       }
     }
 
-    // 7. Price field — compute if needed
+    // 7. Price — try direct price column first, compute deferred to post-pass
     if (config.isPrice && field === 'InvoiceUnitofMeasurePrice') {
-      // First try direct price column (excluding total-type columns)
       const directPrice = headers.find(h => isPriceHeader(h) && !isTotalHeader(h) && !isConvHeader(h));
       if (directPrice) {
         return { templateField: field, value: { type: 'column', name: directPrice }, confidence: 'high' };
       }
-      // Compute from total / qty
-      if (totalHeaders.length > 0 && quantityHeaders.length > 0) {
-        const totalCol = totalHeaders[0];
-        const qtyCol = quantityHeaders[0];
-        const expr = `TRY_CAST([${totalCol}] AS FLOAT) / NULLIF(TRY_CAST([${qtyCol}] AS FLOAT), 0)`;
-        return {
-          templateField: field,
-          value: { type: 'computed', expression: expr, description: `[${totalCol}] ÷ [${qtyCol}]` },
-          confidence: 'computed',
-        };
-      }
+      // Defer — resolveComputedPrice will handle after all fields mapped
+      return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
-    // 8. Quantity fields — prefer non-conv quantity headers
+    // 8. Quantity
     if (config.isQuantity && field === 'InvoiceUnitofMeasureQuantity') {
-      // Exclude conv headers from quantity candidates
       const qtyOnly = headers.filter(h => isQuantityHeader(h) && !isConvHeader(h));
       if (qtyOnly.length > 0) {
         return { templateField: field, value: { type: 'column', name: qtyOnly[0] }, confidence: 'high' };
       }
     }
 
-    // 9. Total amount fields
+    // 9. Total amount
     if (config.isTotal && field === 'TotalInvoiceAmount') {
       if (totalHeaders.length > 0) {
         return { templateField: field, value: { type: 'column', name: totalHeaders[0] }, confidence: 'high' };
       }
     }
 
-    // 10. Learned synonyms — check before generic fuzzy (highest priority after special rules)
+    // 10. Learned synonyms
     const learnedHeaders = getLearningsForField(field, loadLearnings());
     for (const learned of learnedHeaders) {
       const match = headers.find(h => h.toLowerCase().trim() === learned.toLowerCase().trim());
@@ -213,7 +284,6 @@ export function buildMappings(
     let bestHeader = '';
     let bestScore = 0;
     for (const h of headers) {
-      // Skip conv headers for non-conv fields
       if (!config.isConvFactor && isConvHeader(h)) continue;
       const score = matchHeaderToField(h, config);
       if (score > bestScore) {
@@ -222,42 +292,38 @@ export function buildMappings(
       }
     }
 
-    if (bestScore >= 0.99) {
-      return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'exact' };
-    } else if (bestScore >= 0.7) {
-      return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'high' };
-    } else if (bestScore >= 0.45) {
-      return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'medium' };
-    } else if (bestScore >= 0.25) {
-      return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'low' };
-    }
+    if (bestScore >= 0.99) return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'exact' };
+    if (bestScore >= 0.7)  return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'high' };
+    if (bestScore >= 0.45) return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'medium' };
+    if (bestScore >= 0.25) return { templateField: field, value: { type: 'column', name: bestHeader }, confidence: 'low' };
 
     return { templateField: field, value: { type: 'null' }, confidence: 'none' };
   });
 
   // Second pass: resolve mirrors
   const primaryMap: Record<string, MappingValueType> = {};
-  for (const m of mappings) {
-    primaryMap[m.templateField] = m.value;
-  }
+  for (const m of mappings) primaryMap[m.templateField] = m.value;
 
-  return mappings.map(m => {
+  const withMirrors = mappings.map(m => {
     const config = TEMPLATE_FIELDS.find(f => f.field === m.templateField)!;
     if (!config.mirrorOf) return m;
 
     const source = primaryMap[config.mirrorOf];
     if (!source) return m;
 
-    // Date mirrors always use the hardcoded date if set
-    if (config.isDate && userPrompts.date && !promptNeeds.needsDate === false) {
-      return { ...m, value: { type: 'literal', value: userPrompts.date }, confidence: 'hardcoded' };
+    if (config.isDate) {
+      // Date mirrors: use resolvedDate or userPrompts.date if available
+      const dateVal = promptNeeds.resolvedDate ?? userPrompts.date;
+      if (dateVal) return { ...m, value: { type: 'literal' as const, value: dateVal }, confidence: 'hardcoded' as const };
     }
 
-    // For price/qty/uom mirrors, mirror the source value
     if (source.type !== 'null') {
-      return { ...m, value: source, confidence: m.confidence === 'none' ? 'high' : m.confidence };
+      return { ...m, value: source, confidence: m.confidence === 'none' ? 'high' as const : m.confidence };
     }
 
     return m;
   });
+
+  // Third pass: compute price from total ÷ qty if price is still unresolved
+  return resolveComputedPrice(withMirrors);
 }
