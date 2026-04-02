@@ -4,6 +4,7 @@ import type { FieldMapping } from '../types';
 import { generateOutput, generateADFFormat } from '../lib/outputGenerator';
 import { SaveProfilePrompt } from './ProfileBanner';
 import type { DistributorProfile } from '../lib/profiles';
+import { NewFileButton } from './NewFileButton';
 
 interface Props {
   mappings: FieldMapping[];
@@ -13,11 +14,12 @@ interface Props {
   onSaveProfile: (name: string) => void;
   onReset: () => void;
   onBack: () => void;
+  onNewFile: () => void;
 }
 
 type OutputMode = 'select' | 'adf';
 
-export function OutputPanel({ mappings, fileName, detectedDistributorName, existingProfile, onSaveProfile, onReset, onBack }: Props) {
+export function OutputPanel({ mappings, fileName, detectedDistributorName, existingProfile, onSaveProfile, onReset, onBack, onNewFile }: Props) {
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<OutputMode>('select');
   const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
@@ -58,6 +60,7 @@ export function OutputPanel({ mappings, fileName, detectedDistributorName, exist
             <p className="text-slate-400 text-xs mt-0.5">{fileName}</p>
           </div>
           <div className="flex items-center gap-2">
+            <NewFileButton onNewFile={onNewFile} />
             <button onClick={onBack} className="text-slate-400 hover:text-slate-200 text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors">
               ← Back
             </button>

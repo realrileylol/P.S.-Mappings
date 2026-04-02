@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Brain, Check, X, ChevronRight, Sparkles } from 'lucide-react';
 import type { SessionEdit, LearnedSynonym } from '../lib/learnings';
+import { NewFileButton } from './NewFileButton';
 
 interface Props {
   edits: SessionEdit[];
   existingLearnings: LearnedSynonym[];
   onConfirm: (approved: SessionEdit[]) => void;
   onSkip: () => void;
+  onNewFile: () => void;
 }
 
-export function LearningReview({ edits, existingLearnings, onConfirm, onSkip }: Props) {
+export function LearningReview({ edits, existingLearnings, onConfirm, onSkip, onNewFile }: Props) {
   // Only show edits where user actually changed to a real column
   const learnableEdits = edits.filter(e =>
     e.correctedHeader &&
@@ -54,6 +56,9 @@ export function LearningReview({ edits, existingLearnings, onConfirm, onSkip }: 
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
       <div className="w-full max-w-2xl">
+        <div className="flex justify-end mb-4">
+          <NewFileButton onNewFile={onNewFile} />
+        </div>
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 mb-4">

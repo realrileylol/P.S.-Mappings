@@ -145,7 +145,7 @@ export default function App() {
       )}
 
       {step === 'prompts' && promptNeeds && (
-        <PromptDialog needs={promptNeeds} onComplete={handlePromptsComplete} />
+        <PromptDialog needs={promptNeeds} onComplete={handlePromptsComplete} onNewFile={handleReset} />
       )}
 
       {step === 'mapping' && parsedFile && (
@@ -157,6 +157,7 @@ export default function App() {
           onMappingsChange={setMappings}
           onContinue={handleMappingContinue}
           onProfileOverride={handleProfileOverride}
+          onNewFile={handleReset}
         />
       )}
 
@@ -166,6 +167,7 @@ export default function App() {
           existingLearnings={existingLearnings}
           onConfirm={handleLearningConfirm}
           onSkip={() => setStep('output')}
+          onNewFile={handleReset}
         />
       )}
 
@@ -178,6 +180,7 @@ export default function App() {
           onSaveProfile={handleSaveProfile}
           onReset={handleReset}
           onBack={() => setStep('mapping')}
+          onNewFile={handleReset}
         />
       )}
     </div>

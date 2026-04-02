@@ -4,6 +4,7 @@ import type { FieldMapping, MappingValueType, ConfidenceLevel } from '../types';
 import type { SessionEdit } from '../lib/learnings';
 import type { ProfileMatch } from '../lib/profiles';
 import { MatchedProfileBanner } from './ProfileBanner';
+import { NewFileButton } from './NewFileButton';
 
 interface Props {
   mappings: FieldMapping[];
@@ -13,6 +14,7 @@ interface Props {
   onMappingsChange: (updated: FieldMapping[]) => void;
   onContinue: (edits: SessionEdit[]) => void;
   onProfileOverride: () => void;
+  onNewFile: () => void;
 }
 
 const CONFIDENCE_STYLES: Record<ConfidenceLevel, { label: string; color: string; icon: React.ReactNode }> = {
@@ -193,7 +195,7 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
   );
 }
 
-export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch, onMappingsChange, onContinue, onProfileOverride }: Props) {
+export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch, onMappingsChange, onContinue, onProfileOverride, onNewFile }: Props) {
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
   // Track session edits: templateField → { originalHeader, correctedHeader }
   const editsRef = useRef<Map<string, SessionEdit>>(new Map());
@@ -232,6 +234,7 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
             <p className="text-slate-400 text-xs mt-0.5">Review and adjust. Sample values shown below each mapping.</p>
           </div>
           <div className="flex items-center gap-4">
+            <NewFileButton onNewFile={onNewFile} />
             <div className="flex gap-3 text-xs">
               <span className="text-emerald-400">{matchedCount} mapped</span>
               <span className="text-slate-500">{nullCount} null</span>

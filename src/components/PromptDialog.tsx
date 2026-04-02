@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { Building2, Calendar, Truck, ArrowRight, Info } from 'lucide-react';
 import type { PromptNeeds, UserPrompts } from '../types';
+import { NewFileButton } from './NewFileButton';
 
 interface Props {
   needs: PromptNeeds;
   onComplete: (prompts: UserPrompts) => void;
+  onNewFile: () => void;
 }
 
-export function PromptDialog({ needs, onComplete }: Props) {
+export function PromptDialog({ needs, onComplete, onNewFile }: Props) {
   const [facilityId, setFacilityId] = useState('');
   const [facilityName, setFacilityName] = useState('');
   const [date, setDate] = useState('');
@@ -40,6 +42,9 @@ export function PromptDialog({ needs, onComplete }: Props) {
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
       <div className="w-full max-w-xl">
+        <div className="flex justify-end mb-4">
+          <NewFileButton onNewFile={onNewFile} />
+        </div>
         <div className="text-center mb-8">
           <h2 className="text-2xl font-semibold text-white mb-2">A few things missing</h2>
           <p className="text-slate-400 text-sm">
