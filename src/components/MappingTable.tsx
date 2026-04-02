@@ -221,38 +221,66 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
   const editsRef = useRef<Map<string, SessionEdit>>(new Map());
 
-  // Real-time: auto-fill TotalInvoiceAmount + AmountPaid when qty × price both mapped
+  // Mirrors: Invoice → PO and TotalInvoiceAmount → AmountPaid in real-time
+  const MIRRORS: Record<string, string> = {
+    'POUnitofMeasurePrice':    'InvoiceUnitofMeasurePrice',
+    'POUnitofMeasureQuantity': 'InvoiceUnitofMeasureQuantity',
+    'POUnitofMeasure':         'InvoiceUnitofMeasure',
+    'AmountPaid':              'TotalInvoiceAmount',
+  };
+
+  // Serialize source values to detect changes without object reference issues
+  const mirrorSourceKey = ['InvoiceUnitofMeasurePrice','InvoiceUnitofMeasureQuantity','InvoiceUnitofMeasure','TotalInvoiceAmount']
+    .map(f => JSON.stringify(mappings.find(m => m.templateField === f)?.value ?? null))
+    .join('|');
+
   useEffect(() => {
-    const qtyM  = mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity');
-    const priceM = mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice');
-
-    const qtyCol   = qtyM?.value.type   === 'column' ? qtyM.value.name   : null;
-    const priceCol = priceM?.value.type === 'column' ? priceM.value.name : null;
-
-    if (!qtyCol || !priceCol) return;
-
-    const expr = `TRY_CAST([${qtyCol}] AS FLOAT) * TRY_CAST([${priceCol}] AS FLOAT)`;
-    const desc = `[${qtyCol}] × [${priceCol}]`;
-    const computed = { type: 'computed' as const, expression: expr, description: desc };
+    const sourceMap: Record<string, MappingValueType | undefined> = {};
+    for (const m of mappings) sourceMap[m.templateField] = m.value;
 
     let changed = false;
     const next = mappings.map(m => {
-      // Only fill if currently null or was previously auto-computed (not manually set to a real column)
-      if (
-        (m.templateField === 'TotalInvoiceAmount' || m.templateField === 'AmountPaid') &&
-        (m.value.type === 'null' || m.confidence === 'computed')
-      ) {
+      const sourceField = MIRRORS[m.templateField];
+      if (!sourceField) return m;
+      const sourceVal = sourceMap[sourceField];
+      if (!sourceVal || sourceVal.type === 'null') return m;
+      // Only mirror if not manually set to a real column by the user
+      if (m.value.type === 'null' || m.confidence === 'computed' || m.confidence === 'high' || m.confidence === 'none') {
         changed = true;
-        return { ...m, value: computed, confidence: 'computed' as const };
+        return { ...m, value: sourceVal, confidence: m.confidence };
       }
       return m;
     });
 
     if (changed) onMappingsChange(next);
-  }, [
-    mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity')?.value,
-    mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice')?.value,
-  ]);
+  }, [mirrorSourceKey]);
+
+  // Real-time: auto-fill TotalInvoiceAmount when qty × price both mapped as columns
+  const qtyPriceKey = [
+    JSON.stringify(mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity')?.value ?? null),
+    JSON.stringify(mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice')?.value ?? null),
+  ].join('|');
+
+  useEffect(() => {
+    const qtyM   = mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity');
+    const priceM = mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice');
+    const qtyCol   = qtyM?.value.type   === 'column' ? qtyM.value.name   : null;
+    const priceCol = priceM?.value.type === 'column' ? priceM.value.name : null;
+    if (!qtyCol || !priceCol) return;
+
+    const expr = `TRY_CAST([${qtyCol}] AS FLOAT) * TRY_CAST([${priceCol}] AS FLOAT)`;
+    const computed = { type: 'computed' as const, expression: expr, description: `[${qtyCol}] × [${priceCol}]` };
+
+    let changed = false;
+    const next = mappings.map(m => {
+      if (m.templateField === 'TotalInvoiceAmount' && (m.value.type === 'null' || m.confidence === 'computed')) {
+        changed = true;
+        return { ...m, value: computed, confidence: 'computed' as const };
+      }
+      return m;
+    });
+    if (changed) onMappingsChange(next);
+  }, [qtyPriceKey]);
 
   const nullCount = mappings.filter(m => m.value.type === 'null').length;
   const matchedCount = mappings.filter(m => m.value.type !== 'null').length;
