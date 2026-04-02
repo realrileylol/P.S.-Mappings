@@ -49,11 +49,13 @@ export default function App() {
     if (match) {
       // Apply profile directly — skip prompts if profile covers facility/date
       const profileMappings = applyProfile(match.profile, file.headers);
-      // Merge: fill in any null fields from autoMapper
+      // Merge: autoMappings drives the field list and order; profile values override by field name
       const autoMappings = buildMappings(file.headers, {}, needs, file.rows);
-      const merged = profileMappings.map((pm, i) =>
-        pm.value.type === 'null' ? autoMappings[i] : pm
-      );
+      const profileByField = new Map(profileMappings.map(pm => [pm.templateField, pm]));
+      const merged = autoMappings.map(am => {
+        const pm = profileByField.get(am.templateField);
+        return pm && pm.value.type !== 'null' ? pm : am;
+      });
       setMappings(merged);
       setStep('mapping');
       return;

@@ -138,7 +138,7 @@ export function applyProfile(
     // For column mappings, verify the column still exists in this file
     if (saved.valueType === 'column' && saved.columnName) {
       const exists = currentHeaders.find(
-        h => h.toLowerCase().trim() === saved.columnName!.toLowerCase().trim()
+        h => h.toLowerCase().replace(/\s+/g, ' ').trim() === saved.columnName!.toLowerCase().replace(/\s+/g, ' ').trim()
       );
       if (exists) {
         return {
