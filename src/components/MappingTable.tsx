@@ -2,13 +2,17 @@ import { useState, useRef } from 'react';
 import { ChevronRight, Lock, Zap, AlertCircle, CheckCircle2, HelpCircle, Hash, Brain } from 'lucide-react';
 import type { FieldMapping, MappingValueType, ConfidenceLevel } from '../types';
 import type { SessionEdit } from '../lib/learnings';
+import type { ProfileMatch } from '../lib/profiles';
+import { MatchedProfileBanner } from './ProfileBanner';
 
 interface Props {
   mappings: FieldMapping[];
   clientHeaders: string[];
   sampleData: Record<string, string>[];
+  profileMatch: ProfileMatch | null;
   onMappingsChange: (updated: FieldMapping[]) => void;
   onContinue: (edits: SessionEdit[]) => void;
+  onProfileOverride: () => void;
 }
 
 const CONFIDENCE_STYLES: Record<ConfidenceLevel, { label: string; color: string; icon: React.ReactNode }> = {
@@ -189,7 +193,8 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
   );
 }
 
-export function MappingTable({ mappings, clientHeaders, sampleData, onMappingsChange, onContinue }: Props) {
+export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch, onMappingsChange, onContinue, onProfileOverride }: Props) {
+  const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
   // Track session edits: templateField → { originalHeader, correctedHeader }
   const editsRef = useRef<Map<string, SessionEdit>>(new Map());
 
@@ -248,6 +253,15 @@ export function MappingTable({ mappings, clientHeaders, sampleData, onMappingsCh
           </div>
         </div>
       </div>
+
+      {/* Profile matched banner */}
+      {profileMatch && !profileBannerDismissed && (
+        <MatchedProfileBanner
+          match={profileMatch}
+          onDismiss={() => setProfileBannerDismissed(true)}
+          onOverride={() => { setProfileBannerDismissed(true); onProfileOverride(); }}
+        />
+      )}
 
       {/* Required field alert banner */}
       {missingRequired > 0 && (

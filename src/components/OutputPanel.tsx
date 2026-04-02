@@ -2,19 +2,25 @@ import { useState } from 'react';
 import { Copy, Check, RotateCcw, Download } from 'lucide-react';
 import type { FieldMapping } from '../types';
 import { generateOutput, generateADFFormat } from '../lib/outputGenerator';
+import { SaveProfilePrompt } from './ProfileBanner';
+import type { DistributorProfile } from '../lib/profiles';
 
 interface Props {
   mappings: FieldMapping[];
   fileName: string;
+  detectedDistributorName: string;
+  existingProfile?: DistributorProfile;
+  onSaveProfile: (name: string) => void;
   onReset: () => void;
   onBack: () => void;
 }
 
 type OutputMode = 'select' | 'adf';
 
-export function OutputPanel({ mappings, fileName, onReset, onBack }: Props) {
+export function OutputPanel({ mappings, fileName, detectedDistributorName, existingProfile, onSaveProfile, onReset, onBack }: Props) {
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<OutputMode>('select');
+  const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
 
   const selectOutput = generateOutput(mappings);
   const adfOutput = generateADFFormat(mappings);
@@ -52,23 +58,14 @@ export function OutputPanel({ mappings, fileName, onReset, onBack }: Props) {
             <p className="text-slate-400 text-xs mt-0.5">{fileName}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={onBack}
-              className="text-slate-400 hover:text-slate-200 text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors"
-            >
+            <button onClick={onBack} className="text-slate-400 hover:text-slate-200 text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors">
               ← Back
             </button>
-            <button
-              onClick={downloadTxt}
-              className="flex items-center gap-2 text-slate-300 hover:text-white text-sm px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
-            >
+            <button onClick={downloadTxt} className="flex items-center gap-2 text-slate-300 hover:text-white text-sm px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">
               <Download className="w-4 h-4" />
               Download
             </button>
-            <button
-              onClick={copyToClipboard}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-            >
+            <button onClick={copyToClipboard} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
@@ -91,6 +88,18 @@ export function OutputPanel({ mappings, fileName, onReset, onBack }: Props) {
             </div>
           ))}
         </div>
+
+        {/* Save profile prompt */}
+        {!profilePromptDismissed && (
+          <div className="mb-5">
+            <SaveProfilePrompt
+              detectedName={detectedDistributorName}
+              existingProfile={existingProfile}
+              onSave={name => { onSaveProfile(name); }}
+              onDismiss={() => setProfilePromptDismissed(true)}
+            />
+          </div>
+        )}
 
         {/* Mode switcher */}
         <div className="flex gap-1 mb-4 bg-slate-800/50 border border-slate-700 rounded-lg p-1 w-fit">
@@ -117,10 +126,7 @@ export function OutputPanel({ mappings, fileName, onReset, onBack }: Props) {
 
         {/* Reset */}
         <div className="mt-6 text-center">
-          <button
-            onClick={onReset}
-            className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-300 text-sm transition-colors"
-          >
+          <button onClick={onReset} className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-300 text-sm transition-colors">
             <RotateCcw className="w-4 h-4" />
             Start over with a new file
           </button>
