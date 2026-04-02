@@ -68,7 +68,7 @@ function parseDateRangeValue(value: string): string | null {
   return `${mm}-${dd}-${endYear}`;
 }
 
-function detectDateRangeInColumn(
+export function detectDateRangeInColumn(
   header: string,
   rows: Record<string, string>[]
 ): string | null {
