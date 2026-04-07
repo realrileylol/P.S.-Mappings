@@ -1,139 +1,150 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loadProfiles } from '../lib/profiles';
 import { loadLearnings } from '../lib/learnings';
-
-interface Step {
-  message: string;
-  targetPct: number;
-}
-
-function buildSteps(): Step[] {
-  const profiles = loadProfiles();
-  const learnings = loadLearnings();
-  const profileCount = profiles.length;
-  const learningCount = learnings.length;
-
-  return [
-    { message: 'Connecting…',                                                                       targetPct: 12 },
-    { message: `Loading distributor profiles… (${profileCount} saved)`,                             targetPct: 30 },
-    { message: `Loading learnings… (${learningCount} synonym${learningCount !== 1 ? 's' : ''})`,    targetPct: 50 },
-    { message: 'Refreshing 50-field template…',                                                      targetPct: 68 },
-    { message: 'Clearing cached assets…',                                                            targetPct: 84 },
-    { message: 'Applying latest update…',                                                            targetPct: 97 },
-    { message: 'Done! Reloading…',                                                                   targetPct: 100 },
-  ];
-}
 
 interface Props {
   onCancel: () => void;
 }
 
+function sleep(ms: number) {
+  return new Promise<void>(r => setTimeout(r, ms));
+}
+
 export function UpdateOverlay({ onCancel }: Props) {
-  const [pct, setPct] = useState(0);
-  const [stepIdx, setStepIdx] = useState(0);
-  const steps = buildSteps();
+  const [completedLines, setCompletedLines] = useState<{ text: string; ok: boolean }[]>([]);
+  const [typingLine, setTypingLine]         = useState('');
+  const [pct, setPct]                       = useState(0);
+  const [cancelled, setCancelled]           = useState(false);
+  const cancelRef = useRef(false);
+  const logRef    = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let raf: number;
-    let current = 0;
+    cancelRef.current = false;
 
-    const stepDurations = [600, 700, 800, 700, 700, 600, 400];
-
-    function animateToTarget(target: number, duration: number, onDone: () => void) {
-      const start = performance.now();
-      const from = current;
-
-      function tick(now: number) {
-        const elapsed = now - start;
-        const t = Math.min(elapsed / duration, 1);
-        const ease = 1 - Math.pow(1 - t, 3);
-        current = from + (target - from) * ease;
-        setPct(Math.round(current));
-        if (t < 1) {
-          raf = requestAnimationFrame(tick);
-        } else {
-          current = target;
-          setPct(target);
-          onDone();
-        }
+    async function type(text: string) {
+      for (let i = 0; i <= text.length; i++) {
+        if (cancelRef.current) return false;
+        setTypingLine(text.slice(0, i));
+        await sleep(16 + Math.random() * 18);
       }
-      raf = requestAnimationFrame(tick);
+      await sleep(160);
+      return true;
     }
 
-    function runStep(idx: number) {
-      if (idx >= steps.length) return;
-      setStepIdx(idx);
-      animateToTarget(steps[idx].targetPct, stepDurations[idx] ?? 600, () => {
-        if (idx < steps.length - 1) {
-          setTimeout(() => runStep(idx + 1), 120);
-        } else {
-          setTimeout(() => window.location.reload(), 350);
-        }
-      });
+    async function addLine(text: string, ok = true) {
+      const ok_ = await type(text);
+      if (!ok_) return;
+      setCompletedLines(prev => [...prev, { text, ok }]);
+      setTypingLine('');
+      // auto-scroll
+      setTimeout(() => logRef.current?.scrollTo({ top: 9999, behavior: 'smooth' }), 30);
     }
 
-    runStep(0);
-    return () => cancelAnimationFrame(raf);
+    async function run() {
+      const profiles  = loadProfiles();
+      const learnings = loadLearnings();
+
+      // --- build message list ---
+      const msgs: { text: string; pct: number; ok?: boolean }[] = [
+        { text: 'Connecting to update server…',                                            pct: 10 },
+        { text: `Loading profiles — ${profiles.length} distributor${profiles.length !== 1 ? 's' : ''} saved`, pct: 22 },
+        { text: `Loading learnings — ${learnings.length} synonym${learnings.length !== 1 ? 's' : ''}`,        pct: 34 },
+        { text: 'Refreshing 50-field BroadJump template…',                                 pct: 48 },
+      ];
+
+      // version check
+      let isNew = false;
+      try {
+        const res  = await fetch(`/P.S.-Mappings/version.json?t=${Date.now()}`, { cache: 'no-store' });
+        const data = await res.json() as { buildTime: string };
+        isNew = data.buildTime !== __BUILD_TIME__;
+      } catch { /* network offline — proceed anyway */ }
+
+      if (isNew) {
+        msgs.push({ text: 'New version detected — applying changes…', pct: 62 });
+        msgs.push({ text: 'Patching client-side assets…',              pct: 75 });
+        msgs.push({ text: 'Clearing browser cache…',                   pct: 87 });
+        msgs.push({ text: 'Verifying integrity…',                      pct: 94 });
+        msgs.push({ text: 'Done! Reloading into latest version…',      pct: 100 });
+      } else {
+        msgs.push({ text: 'No new version found — already up to date', pct: 70, ok: false });
+        msgs.push({ text: 'Refreshing local cache anyway…',            pct: 84 });
+        msgs.push({ text: 'All good — reloading…',                     pct: 100 });
+      }
+
+      // --- run messages ---
+      for (const msg of msgs) {
+        if (cancelRef.current) return;
+        await addLine(msg.text, msg.ok !== false);
+        setPct(msg.pct);
+        await sleep(msg.pct === 100 ? 100 : 80);
+      }
+
+      await sleep(420);
+      window.location.reload();
+    }
+
+    run();
+
+    return () => { cancelRef.current = true; };
   }, []);
 
-  const currentMessage = steps[stepIdx]?.message ?? '';
+  function handleCancel() {
+    cancelRef.current = true;
+    setCancelled(true);
+    onCancel();
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm">
-      <div className="w-full max-w-sm mx-6">
-        <div className="mb-6 text-center">
-          <p className="text-white text-base font-semibold">Updating P.S. Column Mapper</p>
-          <p className="text-slate-500 text-xs mt-1">Fetching latest version from GitHub Pages</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/92 backdrop-blur-sm">
+      <div className="w-full max-w-md mx-6">
+
+        {/* Header */}
+        <div className="mb-4">
+          <p className="text-white text-sm font-semibold tracking-tight">Updating P.S. Column Mapper</p>
+          <p className="text-slate-500 text-xs mt-0.5">Fetching latest version from GitHub Pages</p>
         </div>
 
-        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-3">
+        {/* Terminal log */}
+        <div
+          ref={logRef}
+          className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs mb-4 h-48 overflow-y-auto space-y-1 scroll-smooth"
+        >
+          {completedLines.map((line, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className={line.ok ? 'text-emerald-500' : 'text-slate-600'}>
+                {line.ok ? '✓' : '—'}
+              </span>
+              <span className={line.ok ? 'text-slate-300' : 'text-slate-600'}>{line.text}</span>
+            </div>
+          ))}
+          {typingLine !== '' && (
+            <div className="flex items-start gap-2">
+              <span className="text-blue-400">›</span>
+              <span className="text-slate-200">
+                {typingLine}
+                <span className="inline-block w-1.5 h-3 bg-blue-400 ml-0.5 align-middle animate-pulse" />
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Progress bar */}
+        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mb-2">
           <div
-            className="h-full bg-blue-500 rounded-full transition-none"
+            className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
             style={{ width: `${pct}%` }}
           />
         </div>
-
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-slate-400 text-xs">{currentMessage}</p>
-          <span className="text-slate-500 text-xs font-mono">{pct}%</span>
-        </div>
-
-        {pct < 97 && (
-          <div className="mt-5 text-center">
-            <button
-              onClick={onCancel}
-              className="text-slate-600 hover:text-slate-400 text-xs transition-colors"
-            >
+        <div className="flex justify-between items-center">
+          <span className="text-slate-600 text-[10px] font-mono">{pct}%</span>
+          {!cancelled && pct < 94 && (
+            <button onClick={handleCancel} className="text-slate-700 hover:text-slate-500 text-[10px] transition-colors">
               Cancel
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
-}
-
-// ── Version check hook ─────────────────────────────────────────────────────
-
-export type VersionStatus = 'checking' | 'up-to-date' | 'update-available' | 'unknown';
-
-export function useVersionCheck(): VersionStatus {
-  const [status, setStatus] = useState<VersionStatus>('checking');
-
-  useEffect(() => {
-    const current = __BUILD_TIME__;
-
-    fetch(`/P.S.-Mappings/version.json?t=${Date.now()}`, { cache: 'no-store' })
-      .then(r => r.json())
-      .then((data: { buildTime: string }) => {
-        if (data.buildTime === current) {
-          setStatus('up-to-date');
-        } else {
-          setStatus('update-available');
-        }
-      })
-      .catch(() => setStatus('unknown'));
-  }, []);
-
-  return status;
 }

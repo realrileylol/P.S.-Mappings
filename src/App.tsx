@@ -5,7 +5,7 @@ import { PromptDialog } from './components/PromptDialog';
 import { MappingTable } from './components/MappingTable';
 import { LearningReview } from './components/LearningReview';
 import { OutputPanel } from './components/OutputPanel';
-import { UpdateOverlay, useVersionCheck } from './components/UpdateOverlay';
+import { UpdateOverlay } from './components/UpdateOverlay';
 import type { ParsedFile, RawFileData, FieldMapping, UserPrompts, AppStep, PromptNeeds } from './types';
 import { parseFileRaw, detectHeaderRow } from './lib/fileParser';
 import { detectPromptNeeds, buildMappings } from './lib/autoMapper';
@@ -19,7 +19,6 @@ import type { ProfileMatch, DistributorProfile } from './lib/profiles';
 
 export default function App() {
   const [updating, setUpdating]             = useState(false);
-  const versionStatus                       = useVersionCheck();
   const [step, setStep]                     = useState<AppStep>('upload');
   const [rawFile, setRawFile]               = useState<RawFileData | null>(null);
   const [rawHeaderRow, setRawHeaderRow]     = useState(0);
@@ -144,21 +143,10 @@ export default function App() {
       {updating && <UpdateOverlay onCancel={() => setUpdating(false)} />}
       <button
         onClick={() => setUpdating(true)}
-        title={
-          versionStatus === 'update-available' ? 'New version available — click to update' :
-          versionStatus === 'up-to-date'       ? 'Already on latest version' :
-          versionStatus === 'checking'         ? 'Checking for updates…' : 'Update'
-        }
-        className={`fixed bottom-4 right-4 z-40 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border backdrop-blur transition-colors
-          ${versionStatus === 'update-available'
-            ? 'text-white bg-blue-600/90 border-blue-500 hover:bg-blue-500'
-            : 'text-slate-400 hover:text-white bg-slate-900/80 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
-          }`}
+        title="Check for updates"
+        className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white bg-slate-900/80 hover:bg-slate-800 backdrop-blur transition-colors"
       >
-        {versionStatus === 'update-available' && <span className="w-2 h-2 rounded-full bg-white animate-pulse flex-shrink-0" />}
-        {versionStatus === 'checking'          ? '↻ Checking…' :
-         versionStatus === 'update-available'  ? '↻ Update available' :
-         versionStatus === 'up-to-date'        ? '✓ Up to date' : '↻ Update'}
+        ↻ Update
       </button>
 
       {step === 'upload' && (
