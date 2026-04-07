@@ -151,9 +151,13 @@ interface RowProps {
 }
 
 function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }: RowProps) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing]           = useState(false);
   const [literalInput, setLiteralInput] = useState('');
   const [showLiteralInput, setShowLiteralInput] = useState(false);
+  const [showFormula, setShowFormula]   = useState(false);
+  const [fCol1, setFCol1]               = useState('');
+  const [fCol2, setFCol2]               = useState('');
+  const [fOp, setFOp]                   = useState<'÷' | '×'>('÷');
 
   const conf = CONFIDENCE_STYLES[mapping.confidence];
   const isLocked = mapping.locked;
@@ -165,6 +169,7 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
   function handleSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
     if (val === '__literal__') { setShowLiteralInput(true); return; }
+    if (val === '__formula__') { setShowFormula(true); setEditing(false); return; }
     let newValue: MappingValueType;
     if (val === '__null__') {
       newValue = { type: 'null' };
@@ -197,6 +202,27 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
     setShowLiteralInput(false); setLiteralInput(''); setEditing(false);
   }
 
+  function commitFormula() {
+    if (!fCol1 || !fCol2) return;
+    let expression: string;
+    let description: string;
+    if (fOp === '÷') {
+      expression  = `TRY_CAST([${fCol1}] AS FLOAT) / NULLIF(TRY_CAST([${fCol2}] AS FLOAT), 0)`;
+      description = `[${fCol1}] ÷ [${fCol2}]`;
+    } else {
+      expression  = `TRY_CAST([${fCol1}] AS FLOAT) * TRY_CAST([${fCol2}] AS FLOAT)`;
+      description = `[${fCol1}] × [${fCol2}]`;
+    }
+    onChange({
+      ...mapping,
+      value: { type: 'computed', expression, description },
+      confidence: 'computed',
+    }, originalHeader);
+    setShowFormula(false);
+  }
+
+  const selectClass = "bg-slate-900 border border-blue-500/60 rounded px-2 py-1 text-xs text-white focus:outline-none";
+
   return (
     <tr className={`border-b transition-colors group
       ${isMissingRequired
@@ -214,28 +240,56 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
           </span>
           {isRequired && <span className="text-red-400 text-[10px] font-bold leading-none" title="Required">*</span>}
           {wasEdited && (
-            <span title="Will be learned">
-              <Brain className="w-3 h-3 text-violet-400 flex-shrink-0" />
-            </span>
+            <span title="Will be learned"><Brain className="w-3 h-3 text-violet-400 flex-shrink-0" /></span>
           )}
           {isLocked && <Lock className="w-3 h-3 text-slate-700 flex-shrink-0" />}
         </div>
-        {isMissingRequired && (
-          <p className="text-red-500 text-[10px] mt-0.5 font-medium">Required field</p>
-        )}
+        {isMissingRequired && <p className="text-red-500 text-[10px] mt-0.5 font-medium">Required field</p>}
       </td>
 
       {/* Confidence */}
       <td className="py-2.5 px-3 w-28">
         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium ${conf.color}`}>
-          {conf.icon}
-          {conf.label}
+          {conf.icon}{conf.label}
         </span>
       </td>
 
       {/* Value */}
-      <td className="py-2.5 px-3">
-        {showLiteralInput ? (
+      <td className="py-2 px-3">
+        {showFormula ? (
+          /* ── Formula builder ── */
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <select value={fCol1} onChange={e => setFCol1(e.target.value)} className={selectClass}>
+              <option value="">Column 1…</option>
+              {clientHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <div className="flex rounded overflow-hidden border border-slate-600">
+              <button
+                onClick={() => setFOp('÷')}
+                className={`px-2.5 py-1 text-xs font-bold transition-colors ${fOp === '÷' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white bg-slate-800'}`}
+              >÷</button>
+              <button
+                onClick={() => setFOp('×')}
+                className={`px-2.5 py-1 text-xs font-bold transition-colors ${fOp === '×' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white bg-slate-800'}`}
+              >×</button>
+            </div>
+            <select value={fCol2} onChange={e => setFCol2(e.target.value)} className={selectClass}>
+              <option value="">Column 2…</option>
+              {clientHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <button
+              onClick={commitFormula}
+              disabled={!fCol1 || !fCol2}
+              className="text-[11px] bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white px-2.5 py-1 rounded transition-colors font-medium"
+            >
+              Build
+            </button>
+            <button
+              onClick={() => setShowFormula(false)}
+              className="text-[11px] text-slate-500 hover:text-slate-300 px-1 transition-colors"
+            >✕</button>
+          </div>
+        ) : showLiteralInput ? (
           <div className="flex gap-1.5 items-center">
             <input
               autoFocus
@@ -253,11 +307,12 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
             autoFocus
             onChange={handleSelect}
             onBlur={() => setEditing(false)}
-            className="bg-slate-900 border border-blue-500/60 rounded px-2 py-1 text-xs text-white w-full focus:outline-none"
+            className={`${selectClass} w-full`}
             defaultValue={mapping.value.type === 'column' ? mapping.value.name : '__null__'}
           >
             <option value="__null__">— null —</option>
             <option value="__literal__">── Hardcode a value ──</option>
+            <option value="__formula__">── Build formula (÷ ×) ──</option>
             {clientHeaders.map(h => <option key={h} value={h}>{h}</option>)}
           </select>
         ) : (
