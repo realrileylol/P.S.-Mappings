@@ -48,7 +48,7 @@ export function FileUpload({ onFileParsed }: Props) {
       <button
         onClick={() => setUpdating(true)}
         title="Check for updates"
-        className="fixed top-4 right-4 flex items-center gap-1.5 text-slate-600 hover:text-slate-300 text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+        className="fixed top-4 right-4 flex items-center gap-1.5 text-slate-400 hover:text-white text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/60 hover:bg-slate-800 transition-colors"
       >
         <RefreshCw className="w-3.5 h-3.5" />
         Update
