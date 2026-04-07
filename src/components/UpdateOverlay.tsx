@@ -81,7 +81,15 @@ export function UpdateOverlay({ onCancel }: Props) {
       }
 
       await sleep(420);
-      window.location.reload();
+      // Clear any Cache API entries (service workers etc.), then navigate
+      // with a busted URL so the browser re-fetches index.html fresh instead
+      // of serving the cached copy. New hashed JS/CSS assets load automatically.
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+      const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
+      window.location.href = `${base}/?v=${Date.now()}`;
     }
 
     run();
