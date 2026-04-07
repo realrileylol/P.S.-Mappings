@@ -21,58 +21,126 @@ interface Props {
   onNewFile: () => void;
 }
 
-const CONFIDENCE_STYLES: Record<ConfidenceLevel, { label: string; color: string; icon: React.ReactNode }> = {
-  'exact':       { label: 'Exact',       color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', icon: <CheckCircle2 className="w-3 h-3" /> },
-  'high':        { label: 'High',        color: 'text-blue-400 bg-blue-400/10 border-blue-400/20',         icon: <CheckCircle2 className="w-3 h-3" /> },
-  'medium':      { label: 'Medium',      color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',   icon: <AlertCircle className="w-3 h-3" /> },
-  'low':         { label: 'Low',         color: 'text-orange-400 bg-orange-400/10 border-orange-400/20',   icon: <AlertCircle className="w-3 h-3" /> },
-  'none':        { label: 'Null',        color: 'text-slate-500 bg-slate-500/10 border-slate-500/20',      icon: <HelpCircle className="w-3 h-3" /> },
-  'hardcoded':   { label: 'Hardcoded',   color: 'text-purple-400 bg-purple-400/10 border-purple-400/20',   icon: <Hash className="w-3 h-3" /> },
-  'computed':    { label: 'Computed',    color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',         icon: <Zap className="w-3 h-3" /> },
-  'always-null': { label: 'Always Null', color: 'text-slate-600 bg-slate-600/10 border-slate-600/20',      icon: <Lock className="w-3 h-3" /> },
+// ── Section groupings ──────────────────────────────────────────────────────
+
+const FIELD_SECTION: Record<string, string> = {
+  FacilityID: 'Facility', FacilityName: 'Facility',
+  InvoiceExtractDate: 'Invoice', InvoiceDate: 'Invoice',
+  InvoiceNumber: 'Invoice', InvoiceLineNumber: 'Invoice',
+  TotalInvoiceAmount: 'Invoice', AmountPaid: 'Invoice',
+  InvoiceSupplierId: 'Supplier', SupplierName: 'Supplier',
+  SupplierCatalogNumber: 'Supplier', SupplierCatalogDescription: 'Supplier',
+  InvoiceUnitofMeasure: 'Line Item', InvoiceUnitofMeasurePrice: 'Line Item',
+  InvoiceUnitofMeasureQuantity: 'Line Item',
+  DepartmentCode: 'GL / Dept', DepartmentName: 'GL / Dept',
+  DepartmentSubAccountCode: 'GL / Dept', DepartmentSubAccountName: 'GL / Dept',
+  GLAccountNumber: 'GL / Dept', GLAccountName: 'GL / Dept',
+  GLSubAccountNumber: 'GL / Dept', GLSubAccountName: 'GL / Dept',
+  GLDescription: 'GL / Dept',
+  PODate: 'Purchase Order', PONumber: 'Purchase Order',
+  POLineNumber: 'Purchase Order', POUnitofMeasure: 'Purchase Order',
+  POUnitofMeasurePrice: 'Purchase Order', POUnitofMeasureQuantity: 'Purchase Order',
+  MMISQuantityPerPurchaseUnitofMeasure: 'MMIS', MMISItemNumber: 'MMIS',
+  MMISManufacturerID: 'MMIS', MMISManufacturerDivision: 'MMIS',
+  MMISManufacturerName: 'MMIS', MMISManufacturerCatalogNumber: 'MMIS',
+  ItemType: 'MMIS', MMISFacilityCategoryID: 'MMIS',
+  MMISFacilityCategoryDescription: 'MMIS', MMISSubCategoryID: 'MMIS',
+  MMISSubCategoryDescription: 'MMIS',
+  PostingDate: 'Contract & Other', ContractIndicator: 'Contract & Other',
+  ContractNumber: 'Contract & Other', ContractName: 'Contract & Other',
+  TransactionType: 'Contract & Other', CheckNumber: 'Contract & Other',
+  CheckDate: 'Contract & Other', UNSPSC: 'Contract & Other',
+  GTIN: 'Contract & Other', NDC: 'Contract & Other',
 };
 
-// Required BroadJump fields
+// Readable labels for long camelCase field names
+const FIELD_LABEL: Record<string, string> = {
+  InvoiceUnitofMeasurePrice:    'Invoice Unit Price',
+  InvoiceUnitofMeasureQuantity: 'Invoice Quantity',
+  InvoiceUnitofMeasure:         'Invoice UoM',
+  POUnitofMeasurePrice:         'PO Unit Price',
+  POUnitofMeasureQuantity:      'PO Quantity',
+  POUnitofMeasure:              'PO UoM',
+  MMISQuantityPerPurchaseUnitofMeasure: 'MMIS Conv Factor',
+  MMISManufacturerCatalogNumber: 'Mfr Catalog #',
+  MMISFacilityCategoryDescription: 'MMIS Category Desc',
+  MMISSubCategoryDescription:   'MMIS SubCategory Desc',
+  SupplierCatalogDescription:   'Supplier Description',
+  DepartmentSubAccountCode:     'Dept Sub-Account Code',
+  DepartmentSubAccountName:     'Dept Sub-Account Name',
+  InvoiceSupplierId:            'Invoice Supplier ID',
+};
+
+function fieldLabel(field: string): string {
+  return FIELD_LABEL[field] ?? field;
+}
+
+// ── Confidence styles ──────────────────────────────────────────────────────
+
+const CONFIDENCE_STYLES: Record<ConfidenceLevel, { label: string; color: string; dot: string; icon: React.ReactNode }> = {
+  'exact':       { label: 'Exact',       dot: 'bg-emerald-400', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', icon: <CheckCircle2 className="w-3 h-3" /> },
+  'high':        { label: 'High',        dot: 'bg-blue-400',    color: 'text-blue-400 bg-blue-400/10 border-blue-400/20',         icon: <CheckCircle2 className="w-3 h-3" /> },
+  'medium':      { label: 'Medium',      dot: 'bg-yellow-400',  color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',   icon: <AlertCircle className="w-3 h-3" /> },
+  'low':         { label: 'Low',         dot: 'bg-orange-400',  color: 'text-orange-400 bg-orange-400/10 border-orange-400/20',   icon: <AlertCircle className="w-3 h-3" /> },
+  'none':        { label: 'Null',        dot: 'bg-slate-600',   color: 'text-slate-500 bg-slate-500/10 border-slate-500/20',      icon: <HelpCircle className="w-3 h-3" /> },
+  'hardcoded':   { label: 'Hardcoded',   dot: 'bg-purple-400',  color: 'text-purple-400 bg-purple-400/10 border-purple-400/20',   icon: <Hash className="w-3 h-3" /> },
+  'computed':    { label: 'Computed',    dot: 'bg-cyan-400',    color: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',         icon: <Zap className="w-3 h-3" /> },
+  'always-null': { label: 'Always Null', dot: 'bg-slate-700',   color: 'text-slate-600 bg-slate-600/10 border-slate-600/20',      icon: <Lock className="w-3 h-3" /> },
+};
+
 const REQUIRED_FIELDS = new Set(['InvoiceDate', 'InvoiceUnitofMeasurePrice', 'InvoiceUnitofMeasureQuantity']);
+
+// ── Value display ──────────────────────────────────────────────────────────
 
 function ValueDisplay({ value }: { value: MappingValueType }) {
   switch (value.type) {
     case 'null':
-      return <span className="text-slate-500 italic text-xs">null</span>;
+      return <span className="text-slate-600 text-xs select-none">—</span>;
     case 'literal':
-      return <span className="text-purple-300 font-mono text-xs">'{value.value}'</span>;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className="text-slate-500 text-xs">'</span>
+          <span className="text-purple-300 font-mono text-xs">{value.value}</span>
+          <span className="text-slate-500 text-xs">'</span>
+        </span>
+      );
     case 'column':
-      return <span className="text-emerald-300 font-mono text-xs">[{value.name}]</span>;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className="text-slate-600 text-xs">[</span>
+          <span className="text-emerald-300 font-mono text-xs">{value.name}</span>
+          <span className="text-slate-600 text-xs">]</span>
+        </span>
+      );
     case 'computed':
       return (
-        <span className="text-cyan-300 font-mono text-xs truncate" title={value.expression}>
+        <span className="text-cyan-300 font-mono text-xs truncate max-w-xs" title={value.expression}>
           {value.description}
         </span>
       );
   }
 }
 
-function SampleValues({ value, sampleData }: { value: MappingValueType; sampleData: Record<string, string>[] }) {
+function SampleChips({ value, sampleData }: { value: MappingValueType; sampleData: Record<string, string>[] }) {
   if (value.type !== 'column' || sampleData.length === 0) return null;
-
   const samples = sampleData
-    .slice(0, 3)
+    .slice(0, 4)
     .map(row => row[value.name])
     .filter(v => v !== undefined && v !== '' && v !== null)
     .slice(0, 3);
-
   if (samples.length === 0) return null;
-
   return (
-    <div className="flex gap-1.5 flex-wrap mt-1">
+    <div className="flex gap-1 flex-wrap mt-1.5">
       {samples.map((s, i) => (
-        <span key={i} className="text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded font-mono truncate max-w-[120px]" title={String(s)}>
+        <span key={i} className="text-[10px] text-slate-500 bg-slate-800/80 border border-slate-700/50 px-1.5 py-0.5 rounded font-mono truncate max-w-[110px]" title={String(s)}>
           {String(s)}
         </span>
       ))}
     </div>
   );
 }
+
+// ── Mapping row ────────────────────────────────────────────────────────────
 
 interface RowProps {
   mapping: FieldMapping;
@@ -86,30 +154,26 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
   const [editing, setEditing] = useState(false);
   const [literalInput, setLiteralInput] = useState('');
   const [showLiteralInput, setShowLiteralInput] = useState(false);
+
   const conf = CONFIDENCE_STYLES[mapping.confidence];
   const isLocked = mapping.locked;
   const isRequired = REQUIRED_FIELDS.has(mapping.templateField);
-  const isMissingRequired = isRequired && mapping.value.type === 'null';
-
+  const isNull = mapping.value.type === 'null';
+  const isMissingRequired = isRequired && isNull;
   const originalHeader = mapping.value.type === 'column' ? mapping.value.name : null;
 
   function handleSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
-    if (val === '__literal__') {
-      setShowLiteralInput(true);
-      return;
-    }
+    if (val === '__literal__') { setShowLiteralInput(true); return; }
     let newValue: MappingValueType;
     if (val === '__null__') {
       newValue = { type: 'null' };
     } else {
-      // If this is a date field, check for range or Excel serial values
       if (DATE_FIELDS.has(mapping.templateField)) {
         const resolvedDate = detectDateRangeInColumn(val, sampleData);
         if (resolvedDate) {
           onChange({ ...mapping, value: { type: 'literal', value: resolvedDate }, confidence: 'hardcoded' }, originalHeader);
-          setEditing(false);
-          return;
+          setEditing(false); return;
         }
       }
       if (EXCEL_DATE_FIELDS.has(mapping.templateField) && detectExcelSerialDatesInColumn(val, sampleData)) {
@@ -118,8 +182,7 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
           value: { type: 'computed', expression: `DATEADD(day, [${val}] - 2, '1900-01-01')`, description: `DATEADD([${val}])` },
           confidence: 'computed',
         }, originalHeader);
-        setEditing(false);
-        return;
+        setEditing(false); return;
       }
       newValue = { type: 'column', name: val };
     }
@@ -131,85 +194,88 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
     if (literalInput.trim()) {
       onChange({ ...mapping, value: { type: 'literal', value: literalInput.trim() }, confidence: 'hardcoded' }, originalHeader);
     }
-    setShowLiteralInput(false);
-    setLiteralInput('');
-    setEditing(false);
+    setShowLiteralInput(false); setLiteralInput(''); setEditing(false);
   }
 
   return (
-    <tr className={`border-b border-slate-800/60 transition-colors group
-      ${isMissingRequired ? 'bg-red-900/10' : 'hover:bg-slate-800/30'}
-    `}>
-      {/* Template field */}
-      <td className="py-2.5 px-4 w-56">
+    <tr className={`border-b transition-colors group
+      ${isMissingRequired
+        ? 'border-red-900/40 bg-red-950/20'
+        : isNull
+          ? 'border-slate-800/30 hover:bg-slate-800/20'
+          : 'border-slate-800/50 hover:bg-slate-800/30'
+      }`}
+    >
+      {/* Field name */}
+      <td className="py-2.5 px-5 w-52">
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-300 text-xs font-mono">{mapping.templateField}</span>
-          {isRequired && (
-            <span className="text-red-400 text-xs font-bold" title="Required by BroadJump">*</span>
-          )}
+          <span className={`text-xs font-mono ${isNull ? 'text-slate-500' : 'text-slate-200'}`}>
+            {fieldLabel(mapping.templateField)}
+          </span>
+          {isRequired && <span className="text-red-400 text-[10px] font-bold leading-none" title="Required">*</span>}
           {wasEdited && (
-            <span title="You edited this — will be learned">
-              <Brain className="w-3 h-3 text-violet-400" />
+            <span title="Will be learned">
+              <Brain className="w-3 h-3 text-violet-400 flex-shrink-0" />
             </span>
           )}
+          {isLocked && <Lock className="w-3 h-3 text-slate-700 flex-shrink-0" />}
         </div>
-      </td>
-
-      {/* Confidence badge */}
-      <td className="py-2.5 px-3 w-28">
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium ${conf.color}`}>
-          {conf.icon}
-          {conf.label}
-        </span>
         {isMissingRequired && (
-          <div className="text-red-400 text-xs mt-0.5 font-medium">Required!</div>
+          <p className="text-red-500 text-[10px] mt-0.5 font-medium">Required field</p>
         )}
       </td>
 
-      {/* Mapped value + sample data */}
+      {/* Confidence */}
+      <td className="py-2.5 px-3 w-28">
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium ${conf.color}`}>
+          {conf.icon}
+          {conf.label}
+        </span>
+      </td>
+
+      {/* Value */}
       <td className="py-2.5 px-3">
         {showLiteralInput ? (
-          <div className="flex gap-1">
+          <div className="flex gap-1.5 items-center">
             <input
               autoFocus
               value={literalInput}
               onChange={e => setLiteralInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && commitLiteral()}
-              placeholder="Enter hardcoded value..."
-              className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs text-white flex-1 focus:outline-none"
+              placeholder="Enter hardcoded value…"
+              className="bg-slate-900 border border-blue-500/60 rounded px-2.5 py-1 text-xs text-white flex-1 focus:outline-none focus:border-blue-400"
             />
-            <button onClick={commitLiteral} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 rounded">OK</button>
-            <button onClick={() => { setShowLiteralInput(false); setEditing(false); }} className="text-xs text-slate-400 px-1">✕</button>
+            <button onClick={commitLiteral} className="text-[11px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded transition-colors">OK</button>
+            <button onClick={() => { setShowLiteralInput(false); setEditing(false); }} className="text-[11px] text-slate-500 hover:text-slate-300 px-1 transition-colors">✕</button>
           </div>
         ) : editing && !isLocked ? (
           <select
             autoFocus
             onChange={handleSelect}
             onBlur={() => setEditing(false)}
-            className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs text-white w-full focus:outline-none"
+            className="bg-slate-900 border border-blue-500/60 rounded px-2 py-1 text-xs text-white w-full focus:outline-none"
             defaultValue={mapping.value.type === 'column' ? mapping.value.name : '__null__'}
           >
-            <option value="__null__">null</option>
-            <option value="__literal__">── Enter hardcoded value ──</option>
-            {clientHeaders.map(h => (
-              <option key={h} value={h}>{h}</option>
-            ))}
+            <option value="__null__">— null —</option>
+            <option value="__literal__">── Hardcode a value ──</option>
+            {clientHeaders.map(h => <option key={h} value={h}>{h}</option>)}
           </select>
         ) : (
-          <div>
-            <div className="flex items-center gap-2">
-              <ValueDisplay value={mapping.value} />
-              {!isLocked && (
-                <button
-                  onClick={() => setEditing(true)}
-                  className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-300 transition-all text-xs ml-1 px-1.5 py-0.5 rounded bg-slate-700 hover:bg-slate-600"
-                >
-                  edit
-                </button>
-              )}
-              {isLocked && <Lock className="w-3 h-3 text-slate-600 ml-1" />}
+          <div className="flex items-start gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <ValueDisplay value={mapping.value} />
+                {!isLocked && (
+                  <button
+                    onClick={() => setEditing(true)}
+                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 transition-all text-[10px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 flex-shrink-0"
+                  >
+                    edit
+                  </button>
+                )}
+              </div>
+              <SampleChips value={mapping.value} sampleData={sampleData} />
             </div>
-            <SampleValues value={mapping.value} sampleData={sampleData} />
           </div>
         )}
       </td>
@@ -217,11 +283,27 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
   );
 }
 
+// ── Section header row ─────────────────────────────────────────────────────
+
+function SectionRow({ label, mappedCount, total }: { label: string; mappedCount: number; total: number }) {
+  return (
+    <tr className="border-b border-slate-700/40">
+      <td colSpan={3} className="px-5 py-2 bg-slate-800/40">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{label}</span>
+          <span className="text-[10px] text-slate-600">{mappedCount}/{total} mapped</span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
+
 export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch, onMappingsChange, onContinue, onProfileOverride, onNewFile }: Props) {
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
   const editsRef = useRef<Map<string, SessionEdit>>(new Map());
 
-  // Mirrors: Invoice → PO and TotalInvoiceAmount → AmountPaid in real-time
   const MIRRORS: Record<string, string> = {
     'POUnitofMeasurePrice':    'InvoiceUnitofMeasurePrice',
     'POUnitofMeasureQuantity': 'InvoiceUnitofMeasureQuantity',
@@ -229,7 +311,6 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
     'AmountPaid':              'TotalInvoiceAmount',
   };
 
-  // Serialize source values to detect changes without object reference issues
   const mirrorSourceKey = ['InvoiceUnitofMeasurePrice','InvoiceUnitofMeasureQuantity','InvoiceUnitofMeasure','TotalInvoiceAmount']
     .map(f => JSON.stringify(mappings.find(m => m.templateField === f)?.value ?? null))
     .join('|');
@@ -237,25 +318,21 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
   useEffect(() => {
     const sourceMap: Record<string, MappingValueType | undefined> = {};
     for (const m of mappings) sourceMap[m.templateField] = m.value;
-
     let changed = false;
     const next = mappings.map(m => {
       const sourceField = MIRRORS[m.templateField];
       if (!sourceField) return m;
       const sourceVal = sourceMap[sourceField];
       if (!sourceVal || sourceVal.type === 'null') return m;
-      // Only mirror if not manually set to a real column by the user
       if (m.value.type === 'null' || m.confidence === 'computed' || m.confidence === 'high' || m.confidence === 'none') {
         changed = true;
         return { ...m, value: sourceVal, confidence: m.confidence };
       }
       return m;
     });
-
     if (changed) onMappingsChange(next);
   }, [mirrorSourceKey]);
 
-  // Real-time: auto-fill TotalInvoiceAmount when qty × price both mapped as columns
   const qtyPriceKey = [
     JSON.stringify(mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity')?.value ?? null),
     JSON.stringify(mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice')?.value ?? null),
@@ -267,10 +344,8 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
     const qtyCol   = qtyM?.value.type   === 'column' ? qtyM.value.name   : null;
     const priceCol = priceM?.value.type === 'column' ? priceM.value.name : null;
     if (!qtyCol || !priceCol) return;
-
     const expr = `TRY_CAST([${qtyCol}] AS FLOAT) * TRY_CAST([${priceCol}] AS FLOAT)`;
     const computed = { type: 'computed' as const, expression: expr, description: `[${qtyCol}] × [${priceCol}]` };
-
     let changed = false;
     const next = mappings.map(m => {
       if (m.templateField === 'TotalInvoiceAmount' && (m.value.type === 'null' || m.confidence === 'computed')) {
@@ -282,64 +357,91 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
     if (changed) onMappingsChange(next);
   }, [qtyPriceKey]);
 
-  const nullCount = mappings.filter(m => m.value.type === 'null').length;
-  const matchedCount = mappings.filter(m => m.value.type !== 'null').length;
-  const lowConfidence = mappings.filter(m => m.confidence === 'low' || m.confidence === 'medium').length;
-  const missingRequired = mappings.filter(m => REQUIRED_FIELDS.has(m.templateField) && m.value.type === 'null').length;
-  const editCount = editsRef.current.size;
+  const nullCount          = mappings.filter(m => m.value.type === 'null').length;
+  const matchedCount       = mappings.filter(m => m.value.type !== 'null').length;
+  const lowConfidence      = mappings.filter(m => m.confidence === 'low' || m.confidence === 'medium').length;
+  const missingRequired    = mappings.filter(m => REQUIRED_FIELDS.has(m.templateField) && m.value.type === 'null').length;
+  const editCount          = editsRef.current.size;
 
   function handleChange(index: number, updated: FieldMapping, originalHeader: string | null) {
     const next = [...mappings];
     next[index] = updated;
     onMappingsChange(next);
-
-    // Track the edit
     const correctedHeader = updated.value.type === 'column' ? updated.value.name : null;
-    editsRef.current.set(updated.templateField, {
-      templateField: updated.templateField,
-      originalHeader,
-      correctedHeader,
-    });
+    editsRef.current.set(updated.templateField, { templateField: updated.templateField, originalHeader, correctedHeader });
   }
 
-  function handleContinue() {
-    onContinue(Array.from(editsRef.current.values()));
-  }
+  // Build section-aware render list
+  const rendered: React.ReactNode[] = [];
+  let lastSection = '';
+
+  mappings.forEach((m, i) => {
+    const section = FIELD_SECTION[m.templateField] ?? 'Other';
+    if (section !== lastSection) {
+      const sectionMappings = mappings.filter(x => (FIELD_SECTION[x.templateField] ?? 'Other') === section);
+      const sectionMapped   = sectionMappings.filter(x => x.value.type !== 'null').length;
+      rendered.push(
+        <SectionRow key={`section-${section}`} label={section} mappedCount={sectionMapped} total={sectionMappings.length} />
+      );
+      lastSection = section;
+    }
+    rendered.push(
+      <MappingRow
+        key={m.templateField}
+        mapping={m}
+        clientHeaders={clientHeaders}
+        sampleData={sampleData}
+        wasEdited={editsRef.current.has(m.templateField)}
+        onChange={(updated, orig) => handleChange(i, updated, orig)}
+      />
+    );
+  });
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Top bar */}
-      <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+      <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-3.5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-white">Column Mapping</h2>
-            <p className="text-slate-400 text-xs mt-0.5">Review and adjust. Sample values shown below each mapping.</p>
+            <h2 className="text-sm font-semibold text-white tracking-tight">Column Mapping</h2>
+            <p className="text-slate-500 text-xs mt-0.5">Review and adjust. Sample values shown below each mapping.</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <NewFileButton onNewFile={onNewFile} />
-            <div className="flex gap-3 text-xs">
-              <span className="text-emerald-400">{matchedCount} mapped</span>
+            {/* Stats */}
+            <div className="hidden sm:flex items-center gap-2 text-xs">
+              <span className="flex items-center gap-1 text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                {matchedCount} mapped
+              </span>
+              <span className="text-slate-700">·</span>
               <span className="text-slate-500">{nullCount} null</span>
-              {lowConfidence > 0 && <span className="text-yellow-400">{lowConfidence} to review</span>}
-              {editCount > 0 && (
+              {lowConfidence > 0 && <>
+                <span className="text-slate-700">·</span>
+                <span className="text-yellow-400">{lowConfidence} to review</span>
+              </>}
+              {editCount > 0 && <>
+                <span className="text-slate-700">·</span>
                 <span className="text-violet-400 flex items-center gap-1">
                   <Brain className="w-3 h-3" />{editCount} to learn
                 </span>
-              )}
+              </>}
             </div>
             <button
-              onClick={handleContinue}
-              className={`flex items-center gap-2 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors
+              onClick={() => onContinue(Array.from(editsRef.current.values()))}
+              className={`flex items-center gap-1.5 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors
                 ${missingRequired > 0 ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'}`}
             >
-              {missingRequired > 0 ? `${missingRequired} Required Field${missingRequired > 1 ? 's' : ''} Missing` : 'Generate Output'}
+              {missingRequired > 0
+                ? `${missingRequired} Required Missing`
+                : 'Generate Output'}
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Profile matched banner */}
+      {/* Profile banner */}
       {profileMatch && !profileBannerDismissed && (
         <MatchedProfileBanner
           match={profileMatch}
@@ -348,52 +450,43 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
         />
       )}
 
-      {/* Required field alert banner */}
+      {/* Required field warning */}
       {missingRequired > 0 && (
-        <div className="bg-red-900/20 border-b border-red-800/50 px-6 py-2.5">
-          <div className="max-w-5xl mx-auto text-red-400 text-xs font-medium">
-            ⚠ BroadJump requires InvoiceDate, InvoiceUnitofMeasurePrice, and InvoiceUnitofMeasureQuantity — {missingRequired} still null. You can still continue but the file may fail to process.
-          </div>
+        <div className="bg-red-950/40 border-b border-red-900/40 px-6 py-2">
+          <p className="max-w-5xl mx-auto text-red-400 text-xs">
+            ⚠ BroadJump requires InvoiceDate, InvoiceUnitofMeasurePrice, and InvoiceUnitofMeasureQuantity — {missingRequired} still unmapped.
+          </p>
         </div>
       )}
 
-      {/* Legend */}
-      <div className="border-b border-slate-800 bg-slate-900/50">
-        <div className="max-w-5xl mx-auto px-6 py-2 flex flex-wrap gap-3">
+      {/* Legend strip */}
+      <div className="border-b border-slate-800/60 bg-slate-900/30">
+        <div className="max-w-5xl mx-auto px-5 py-2 flex flex-wrap gap-x-4 gap-y-1">
           {(Object.entries(CONFIDENCE_STYLES) as [ConfidenceLevel, typeof CONFIDENCE_STYLES[ConfidenceLevel]][]).map(([key, val]) => (
-            <span key={key} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs ${val.color}`}>
-              {val.icon} {val.label}
+            <span key={key} className="inline-flex items-center gap-1.5 text-[10px] text-slate-500">
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${val.dot}`} />
+              {val.label}
             </span>
           ))}
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs text-violet-400 bg-violet-400/10 border-violet-400/20">
-            <Brain className="w-3 h-3" /> Will Learn
+          <span className="inline-flex items-center gap-1.5 text-[10px] text-slate-500">
+            <Brain className="w-3 h-3 text-violet-400" />
+            Will Learn
           </span>
         </div>
       </div>
 
       {/* Table */}
       <div className="flex-1 overflow-auto">
-        <div className="max-w-5xl mx-auto px-4 pb-8">
-          <table className="w-full text-sm mt-4">
+        <div className="max-w-5xl mx-auto px-4 pb-12">
+          <table className="w-full text-sm mt-2">
             <thead>
-              <tr className="text-left text-xs text-slate-500 uppercase tracking-wider">
-                <th className="py-2 px-4 font-medium">Template Field</th>
-                <th className="py-2 px-3 font-medium">Confidence</th>
-                <th className="py-2 px-3 font-medium">Mapped To / Sample Values</th>
+              <tr className="text-left">
+                <th className="py-2.5 px-5 text-[10px] font-semibold uppercase tracking-widest text-slate-600 w-52">Field</th>
+                <th className="py-2.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600 w-28">Confidence</th>
+                <th className="py-2.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Mapped To</th>
               </tr>
             </thead>
-            <tbody>
-              {mappings.map((m, i) => (
-                <MappingRow
-                  key={m.templateField}
-                  mapping={m}
-                  clientHeaders={clientHeaders}
-                  sampleData={sampleData}
-                  wasEdited={editsRef.current.has(m.templateField)}
-                  onChange={(updated, orig) => handleChange(i, updated, orig)}
-                />
-              ))}
-            </tbody>
+            <tbody>{rendered}</tbody>
           </table>
         </div>
       </div>

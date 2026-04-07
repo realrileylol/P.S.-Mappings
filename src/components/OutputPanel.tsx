@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check, RotateCcw, Download } from 'lucide-react';
+import { Copy, Check, RotateCcw, Download, ArrowLeft } from 'lucide-react';
 import type { FieldMapping } from '../types';
 import { generateOutput, generateADFFormat } from '../lib/outputGenerator';
 import { SaveProfilePrompt } from './ProfileBanner';
@@ -25,7 +25,7 @@ export function OutputPanel({ mappings, fileName, detectedDistributorName, exist
   const [profilePromptDismissed, setProfilePromptDismissed] = useState(false);
 
   const selectOutput = generateOutput(mappings);
-  const adfOutput = generateADFFormat(mappings);
+  const adfOutput    = generateADFFormat(mappings);
   const displayOutput = mode === 'select' ? selectOutput : adfOutput;
 
   function copyToClipboard() {
@@ -45,31 +45,33 @@ export function OutputPanel({ mappings, fileName, detectedDistributorName, exist
     URL.revokeObjectURL(url);
   }
 
-  const nullCount = mappings.filter(m => m.value.type === 'null').length;
-  const matchedCount = mappings.filter(m => m.value.type !== 'null').length;
-  const computedCount = mappings.filter(m => m.value.type === 'computed').length;
+  const nullCount      = mappings.filter(m => m.value.type === 'null').length;
+  const matchedCount   = mappings.filter(m => m.value.type !== 'null').length;
+  const computedCount  = mappings.filter(m => m.value.type === 'computed').length;
   const hardcodedCount = mappings.filter(m => m.confidence === 'hardcoded').length;
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Top bar */}
-      <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Generated Mapping</h2>
-            <p className="text-slate-400 text-xs mt-0.5">{fileName}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <NewFileButton onNewFile={onNewFile} />
-            <button onClick={onBack} className="text-slate-400 hover:text-slate-200 text-sm px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors">
-              ← Back
+      <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-3.5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={onBack} className="text-slate-500 hover:text-slate-300 transition-colors flex-shrink-0">
+              <ArrowLeft className="w-4 h-4" />
             </button>
-            <button onClick={downloadTxt} className="flex items-center gap-2 text-slate-300 hover:text-white text-sm px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors">
-              <Download className="w-4 h-4" />
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-white tracking-tight">Generated Mapping</h2>
+              <p className="text-slate-600 text-xs truncate mt-0.5">{fileName}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <NewFileButton onNewFile={onNewFile} />
+            <button onClick={downloadTxt} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors">
+              <Download className="w-3.5 h-3.5" />
               Download
             </button>
-            <button onClick={copyToClipboard} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            <button onClick={copyToClipboard} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors">
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
@@ -77,22 +79,23 @@ export function OutputPanel({ mappings, fileName, detectedDistributorName, exist
       </div>
 
       <div className="max-w-5xl mx-auto w-full px-6 py-6 flex-1">
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-3 mb-6">
+
+        {/* Stats row */}
+        <div className="flex items-center gap-6 mb-6 pb-5 border-b border-slate-800/60">
           {[
-            { label: 'Mapped', value: matchedCount, color: 'text-emerald-400' },
-            { label: 'Null', value: nullCount, color: 'text-slate-500' },
-            { label: 'Computed', value: computedCount, color: 'text-cyan-400' },
-            { label: 'Hardcoded', value: hardcodedCount, color: 'text-purple-400' },
+            { label: 'Mapped',     value: matchedCount,   color: 'text-emerald-400' },
+            { label: 'Null',       value: nullCount,       color: 'text-slate-500'   },
+            { label: 'Computed',   value: computedCount,   color: 'text-cyan-400'    },
+            { label: 'Hardcoded',  value: hardcodedCount,  color: 'text-purple-400'  },
           ].map(stat => (
-            <div key={stat.label} className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 text-center">
-              <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
-              <div className="text-slate-500 text-xs mt-1">{stat.label}</div>
+            <div key={stat.label} className="text-center">
+              <div className={`text-xl font-bold tabular-nums ${stat.color}`}>{stat.value}</div>
+              <div className="text-slate-600 text-[10px] uppercase tracking-wider mt-0.5">{stat.label}</div>
             </div>
           ))}
         </div>
 
-        {/* Save profile prompt */}
+        {/* Save profile */}
         {!profilePromptDismissed && (
           <div className="mb-5">
             <SaveProfilePrompt
@@ -105,32 +108,38 @@ export function OutputPanel({ mappings, fileName, detectedDistributorName, exist
         )}
 
         {/* Mode switcher */}
-        <div className="flex gap-1 mb-4 bg-slate-800/50 border border-slate-700 rounded-lg p-1 w-fit">
-          <button
-            onClick={() => setMode('select')}
-            className={`px-4 py-1.5 rounded text-xs font-medium transition-colors ${mode === 'select' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-          >
-            SELECT Format
-          </button>
-          <button
-            onClick={() => setMode('adf')}
-            className={`px-4 py-1.5 rounded text-xs font-medium transition-colors ${mode === 'adf' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-          >
-            ADF Raw Format
-          </button>
+        <div className="flex gap-1 mb-3 bg-slate-800/50 border border-slate-700/60 rounded-lg p-1 w-fit">
+          {(['select', 'adf'] as OutputMode[]).map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${mode === m ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              {m === 'select' ? 'SELECT Format' : 'ADF Raw'}
+            </button>
+          ))}
         </div>
 
-        {/* Output */}
-        <div className="relative">
-          <pre className="bg-slate-950 border border-slate-800 rounded-xl p-6 text-xs font-mono text-slate-300 overflow-auto max-h-[60vh] leading-relaxed whitespace-pre-wrap">
+        {/* Code output */}
+        <div className="relative rounded-xl overflow-hidden border border-slate-800">
+          <div className="absolute top-3 right-3 z-10">
+            <button
+              onClick={copyToClipboard}
+              className="flex items-center gap-1 text-slate-600 hover:text-slate-300 text-[10px] px-2 py-1 rounded bg-slate-900/80 hover:bg-slate-800 border border-slate-700/50 transition-colors"
+            >
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <pre className="bg-slate-950 p-6 text-xs font-mono text-slate-300 overflow-auto max-h-[60vh] leading-relaxed whitespace-pre-wrap">
             {displayOutput}
           </pre>
         </div>
 
         {/* Reset */}
-        <div className="mt-6 text-center">
-          <button onClick={onReset} className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-300 text-sm transition-colors">
-            <RotateCcw className="w-4 h-4" />
+        <div className="mt-8 text-center">
+          <button onClick={onReset} className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-400 text-xs transition-colors">
+            <RotateCcw className="w-3.5 h-3.5" />
             Start over with a new file
           </button>
         </div>
