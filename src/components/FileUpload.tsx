@@ -1,8 +1,7 @@
 import { useCallback, useState } from 'react';
-import { UploadCloud, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet } from 'lucide-react';
 import { parseFile } from '../lib/fileParser';
 import type { ParsedFile } from '../types';
-import { UpdateOverlay } from './UpdateOverlay';
 
 interface Props {
   onFileParsed: (file: ParsedFile) => void;
@@ -12,8 +11,6 @@ export function FileUpload({ onFileParsed }: Props) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [updating, setUpdating] = useState(false);
-
   const handleFile = useCallback(async (file: File) => {
     setError('');
     setLoading(true);
@@ -42,18 +39,6 @@ export function FileUpload({ onFileParsed }: Props) {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
-      {updating && <UpdateOverlay onCancel={() => setUpdating(false)} />}
-
-      {/* Update button — top-right corner */}
-      <button
-        onClick={() => setUpdating(true)}
-        title="Check for updates"
-        className="fixed top-4 right-4 flex items-center gap-1.5 text-slate-400 hover:text-white text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800/60 hover:bg-slate-800 transition-colors"
-      >
-        <RefreshCw className="w-3.5 h-3.5" />
-        Update
-      </button>
-
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-10">
