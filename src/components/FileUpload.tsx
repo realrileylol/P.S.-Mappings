@@ -1,13 +1,11 @@
 import { useCallback, useState } from 'react';
 import { UploadCloud, FileSpreadsheet } from 'lucide-react';
-import { parseFile } from '../lib/fileParser';
-import type { ParsedFile } from '../types';
 
 interface Props {
-  onFileParsed: (file: ParsedFile) => void;
+  onFileSelected: (file: File) => Promise<void>;
 }
 
-export function FileUpload({ onFileParsed }: Props) {
+export function FileUpload({ onFileSelected }: Props) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -16,15 +14,12 @@ export function FileUpload({ onFileParsed }: Props) {
     setError('');
     setLoading(true);
     try {
-      const parsed = await parseFile(file);
-      if (parsed.headers.length === 0) throw new Error('No column headers detected in file.');
-      onFileParsed(parsed);
+      await onFileSelected(file);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to parse file.');
-    } finally {
       setLoading(false);
     }
-  }, [onFileParsed]);
+  }, [onFileSelected]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

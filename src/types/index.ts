@@ -26,7 +26,12 @@ export interface ParsedFile {
   fileName: string;
 }
 
-export type AppStep = 'upload' | 'prompts' | 'mapping' | 'learning' | 'output';
+export interface RawFileData {
+  rows: string[][];   // every row as raw string array (no header processing)
+  fileName: string;
+}
+
+export type AppStep = 'upload' | 'preview' | 'prompts' | 'mapping' | 'learning' | 'output';
 
 export interface PromptNeeds {
   needsFacilityId: boolean;

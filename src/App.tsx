@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { FileUpload } from './components/FileUpload';
+import { DataPreview } from './components/DataPreview';
 import { PromptDialog } from './components/PromptDialog';
 import { MappingTable } from './components/MappingTable';
 import { LearningReview } from './components/LearningReview';
 import { OutputPanel } from './components/OutputPanel';
 import { UpdateOverlay, useVersionCheck } from './components/UpdateOverlay';
-import type { ParsedFile, FieldMapping, UserPrompts, AppStep, PromptNeeds } from './types';
+import type { ParsedFile, RawFileData, FieldMapping, UserPrompts, AppStep, PromptNeeds } from './types';
+import { parseFileRaw, detectHeaderRow } from './lib/fileParser';
 import { detectPromptNeeds, buildMappings } from './lib/autoMapper';
 import { loadLearnings, saveLearnings, applySessionEdits } from './lib/learnings';
 import type { SessionEdit, LearnedSynonym } from './lib/learnings';
@@ -16,32 +18,39 @@ import {
 import type { ProfileMatch, DistributorProfile } from './lib/profiles';
 
 export default function App() {
-  const [updating, setUpdating] = useState(false);
-  const versionStatus = useVersionCheck();
-  const [step, setStep] = useState<AppStep>('upload');
-  const [parsedFile, setParsedFile] = useState<ParsedFile | null>(null);
-  const [promptNeeds, setPromptNeeds] = useState<PromptNeeds | null>(null);
-  const [mappings, setMappings] = useState<FieldMapping[]>([]);
-  const [sessionEdits, setSessionEdits] = useState<SessionEdit[]>([]);
+  const [updating, setUpdating]             = useState(false);
+  const versionStatus                       = useVersionCheck();
+  const [step, setStep]                     = useState<AppStep>('upload');
+  const [rawFile, setRawFile]               = useState<RawFileData | null>(null);
+  const [rawHeaderRow, setRawHeaderRow]     = useState(0);
+  const [parsedFile, setParsedFile]         = useState<ParsedFile | null>(null);
+  const [promptNeeds, setPromptNeeds]       = useState<PromptNeeds | null>(null);
+  const [mappings, setMappings]             = useState<FieldMapping[]>([]);
+  const [sessionEdits, setSessionEdits]     = useState<SessionEdit[]>([]);
   const [existingLearnings, setExistingLearnings] = useState<LearnedSynonym[]>([]);
-  const [profileMatch, setProfileMatch] = useState<ProfileMatch | null>(null);
+  const [profileMatch, setProfileMatch]     = useState<ProfileMatch | null>(null);
   const [detectedDistributorName, setDetectedDistributorName] = useState('');
 
-  function handleFileParsed(file: ParsedFile) {
+  // Step 1: file upload → parse raw → show preview
+  async function handleFileSelected(file: File) {
+    const raw = await parseFileRaw(file);
+    const guessedHeaderRow = detectHeaderRow(raw.rows);
+    setRawFile(raw);
+    setRawHeaderRow(guessedHeaderRow);
+    setStep('preview');
+  }
+
+  // Step 2: preview confirmed → build ParsedFile → continue to mapping flow
+  function handlePreviewConfirmed(file: ParsedFile) {
     setParsedFile(file);
 
-    // Try to match a known distributor profile
     const profiles = loadProfiles();
     const match = detectProfile(file.fileName, file.headers, file.rows, profiles);
     setProfileMatch(match);
 
-    // Detect what distributor name to suggest when saving
-    const supplierHeader = file.headers.find(h =>
-      /vendor|supplier|distributor/i.test(h)
-    );
+    const supplierHeader = file.headers.find(h => /vendor|supplier|distributor/i.test(h));
     const supplierFromData = supplierHeader && file.rows.length > 0
-      ? String(file.rows[0][supplierHeader] ?? '')
-      : '';
+      ? String(file.rows[0][supplierHeader] ?? '') : '';
     setDetectedDistributorName(
       match?.profile.name ?? supplierFromData ?? file.fileName.replace(/\.[^/.]+$/, '')
     );
@@ -50,11 +59,9 @@ export default function App() {
     setPromptNeeds(needs);
 
     if (match) {
-      // Apply profile directly — skip prompts if profile covers facility/date
       const profileMappings = applyProfile(match.profile, file.headers);
-      // Merge: autoMappings drives the field list and order; profile values override by field name
-      const autoMappings = buildMappings(file.headers, {}, needs, file.rows);
-      const profileByField = new Map(profileMappings.map(pm => [pm.templateField, pm]));
+      const autoMappings    = buildMappings(file.headers, {}, needs, file.rows);
+      const profileByField  = new Map(profileMappings.map(pm => [pm.templateField, pm]));
       const merged = autoMappings.map(am => {
         const pm = profileByField.get(am.templateField);
         return pm && pm.value.type !== 'null' ? pm : am;
@@ -66,8 +73,7 @@ export default function App() {
 
     const anyNeeded = needs.needsFacilityId || needs.needsFacilityName || needs.needsDate || needs.needsSupplierName;
     if (!anyNeeded) {
-      const built = buildMappings(file.headers, {}, needs, file.rows);
-      setMappings(built);
+      setMappings(buildMappings(file.headers, {}, needs, file.rows));
       setStep('mapping');
     } else {
       setStep('prompts');
@@ -76,63 +82,53 @@ export default function App() {
 
   function handlePromptsComplete(prompts: UserPrompts) {
     if (!parsedFile || !promptNeeds) return;
-    const built = buildMappings(parsedFile.headers, prompts, promptNeeds, parsedFile.rows);
-    setMappings(built);
+    setMappings(buildMappings(parsedFile.headers, prompts, promptNeeds, parsedFile.rows));
     setStep('mapping');
   }
 
   function handleProfileOverride() {
-    // User wants to ignore the profile and re-map from scratch
     if (!parsedFile || !promptNeeds) return;
     setProfileMatch(null);
     const anyNeeded = promptNeeds.needsFacilityId || promptNeeds.needsFacilityName || promptNeeds.needsDate || promptNeeds.needsSupplierName;
     if (anyNeeded) {
       setStep('prompts');
     } else {
-      const built = buildMappings(parsedFile.headers, {}, promptNeeds);
-      setMappings(built);
+      setMappings(buildMappings(parsedFile.headers, {}, promptNeeds));
     }
   }
 
   function handleMappingContinue(edits: SessionEdit[]) {
     setSessionEdits(edits);
     const learnable = edits.filter(e => e.correctedHeader && e.correctedHeader !== e.originalHeader);
-    if (learnable.length === 0) {
-      setStep('output');
-      return;
-    }
-    const current = loadLearnings();
-    setExistingLearnings(current);
+    if (learnable.length === 0) { setStep('output'); return; }
+    setExistingLearnings(loadLearnings());
     setStep('learning');
   }
 
   function handleLearningConfirm(approved: SessionEdit[]) {
-    const current = loadLearnings();
-    const { updated } = applySessionEdits(approved, current);
+    const { updated } = applySessionEdits(approved, loadLearnings());
     saveLearnings(updated);
     setStep('output');
   }
 
   function handleSaveProfile(name: string) {
     const profile = buildProfileFromMappings(name, mappings);
-
-    // Merge with existing profile if one was matched
     if (profileMatch) {
       const existing = profileMatch.profile;
-      const updated: DistributorProfile = {
+      saveProfile({
         ...profile,
         id: existing.id,
         aliases: [...new Set([...existing.aliases, profile.aliases[0]])],
         usageCount: existing.usageCount + 1,
         createdAt: existing.createdAt,
-      };
-      saveProfile(updated);
+      } as DistributorProfile);
     } else {
       saveProfile(profile);
     }
   }
 
   function handleReset() {
+    setRawFile(null);
     setParsedFile(null);
     setPromptNeeds(null);
     setMappings([]);
@@ -151,8 +147,7 @@ export default function App() {
         title={
           versionStatus === 'update-available' ? 'New version available — click to update' :
           versionStatus === 'up-to-date'       ? 'Already on latest version' :
-          versionStatus === 'checking'         ? 'Checking for updates…' :
-                                                 'Update'
+          versionStatus === 'checking'         ? 'Checking for updates…' : 'Update'
         }
         className={`fixed bottom-4 right-4 z-40 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border backdrop-blur transition-colors
           ${versionStatus === 'update-available'
@@ -160,17 +155,23 @@ export default function App() {
             : 'text-slate-400 hover:text-white bg-slate-900/80 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
           }`}
       >
-        {versionStatus === 'update-available' && (
-          <span className="w-2 h-2 rounded-full bg-white animate-pulse flex-shrink-0" />
-        )}
-        {versionStatus === 'checking' ? '↻ Checking…' :
-         versionStatus === 'update-available' ? '↻ Update available' :
-         versionStatus === 'up-to-date' ? '✓ Up to date' :
-         '↻ Update'}
+        {versionStatus === 'update-available' && <span className="w-2 h-2 rounded-full bg-white animate-pulse flex-shrink-0" />}
+        {versionStatus === 'checking'          ? '↻ Checking…' :
+         versionStatus === 'update-available'  ? '↻ Update available' :
+         versionStatus === 'up-to-date'        ? '✓ Up to date' : '↻ Update'}
       </button>
 
       {step === 'upload' && (
-        <FileUpload onFileParsed={handleFileParsed} />
+        <FileUpload onFileSelected={handleFileSelected} />
+      )}
+
+      {step === 'preview' && rawFile && (
+        <DataPreview
+          raw={rawFile}
+          initialHeaderRow={rawHeaderRow}
+          onConfirm={handlePreviewConfirmed}
+          onNewFile={handleReset}
+        />
       )}
 
       {step === 'prompts' && promptNeeds && (
