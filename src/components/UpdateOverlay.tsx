@@ -14,13 +14,13 @@ function buildSteps(): Step[] {
   const learningCount = learnings.length;
 
   return [
-    { message: 'Connecting…',                                                         targetPct: 12  },
-    { message: `Loading distributor profiles… (${profileCount} saved)`,               targetPct: 30  },
-    { message: `Loading learnings… (${learningCount} synonym${learningCount !== 1 ? 's' : ''})`, targetPct: 50 },
-    { message: 'Refreshing 50-field template…',                                        targetPct: 68  },
-    { message: 'Clearing cached assets…',                                              targetPct: 84  },
-    { message: 'Applying latest update…',                                              targetPct: 97  },
-    { message: 'Done! Reloading…',                                                     targetPct: 100 },
+    { message: 'Connecting…',                                                                       targetPct: 12 },
+    { message: `Loading distributor profiles… (${profileCount} saved)`,                             targetPct: 30 },
+    { message: `Loading learnings… (${learningCount} synonym${learningCount !== 1 ? 's' : ''})`,    targetPct: 50 },
+    { message: 'Refreshing 50-field template…',                                                      targetPct: 68 },
+    { message: 'Clearing cached assets…',                                                            targetPct: 84 },
+    { message: 'Applying latest update…',                                                            targetPct: 97 },
+    { message: 'Done! Reloading…',                                                                   targetPct: 100 },
   ];
 }
 
@@ -37,7 +37,6 @@ export function UpdateOverlay({ onCancel }: Props) {
     let raf: number;
     let current = 0;
 
-    // Step durations in ms
     const stepDurations = [600, 700, 800, 700, 700, 600, 400];
 
     function animateToTarget(target: number, duration: number, onDone: () => void) {
@@ -47,7 +46,6 @@ export function UpdateOverlay({ onCancel }: Props) {
       function tick(now: number) {
         const elapsed = now - start;
         const t = Math.min(elapsed / duration, 1);
-        // Ease-out
         const ease = 1 - Math.pow(1 - t, 3);
         current = from + (target - from) * ease;
         setPct(Math.round(current));
@@ -69,7 +67,6 @@ export function UpdateOverlay({ onCancel }: Props) {
         if (idx < steps.length - 1) {
           setTimeout(() => runStep(idx + 1), 120);
         } else {
-          // All done — reload the page
           setTimeout(() => window.location.reload(), 350);
         }
       });
@@ -84,13 +81,11 @@ export function UpdateOverlay({ onCancel }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm">
       <div className="w-full max-w-sm mx-6">
-        {/* Title */}
         <div className="mb-6 text-center">
           <p className="text-white text-base font-semibold">Updating P.S. Column Mapper</p>
           <p className="text-slate-500 text-xs mt-1">Fetching latest version from GitHub Pages</p>
         </div>
 
-        {/* Progress bar */}
         <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-3">
           <div
             className="h-full bg-blue-500 rounded-full transition-none"
@@ -98,13 +93,11 @@ export function UpdateOverlay({ onCancel }: Props) {
           />
         </div>
 
-        {/* Percentage + status */}
         <div className="flex items-center justify-between mb-1">
           <p className="text-slate-400 text-xs">{currentMessage}</p>
           <span className="text-slate-500 text-xs font-mono">{pct}%</span>
         </div>
 
-        {/* Cancel (only before it hits 97%) */}
         {pct < 97 && (
           <div className="mt-5 text-center">
             <button
@@ -118,4 +111,29 @@ export function UpdateOverlay({ onCancel }: Props) {
       </div>
     </div>
   );
+}
+
+// ── Version check hook ─────────────────────────────────────────────────────
+
+export type VersionStatus = 'checking' | 'up-to-date' | 'update-available' | 'unknown';
+
+export function useVersionCheck(): VersionStatus {
+  const [status, setStatus] = useState<VersionStatus>('checking');
+
+  useEffect(() => {
+    const current = __BUILD_TIME__;
+
+    fetch(`/P.S.-Mappings/version.json?t=${Date.now()}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then((data: { buildTime: string }) => {
+        if (data.buildTime === current) {
+          setStatus('up-to-date');
+        } else {
+          setStatus('update-available');
+        }
+      })
+      .catch(() => setStatus('unknown'));
+  }, []);
+
+  return status;
 }
