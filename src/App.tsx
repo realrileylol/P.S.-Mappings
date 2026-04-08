@@ -6,6 +6,8 @@ import { MappingTable } from './components/MappingTable';
 import { LearningReview } from './components/LearningReview';
 import { OutputPanel } from './components/OutputPanel';
 import { UpdateOverlay } from './components/UpdateOverlay';
+import { Toaster } from './components/Toaster';
+import { toast } from './lib/toast';
 import type { ParsedFile, RawFileData, FieldMapping, UserPrompts, AppStep, PromptNeeds } from './types';
 import { parseFileRaw, detectHeaderRow } from './lib/fileParser';
 import { detectPromptNeeds, buildMappings } from './lib/autoMapper';
@@ -117,6 +119,7 @@ export default function App() {
       });
       setMappings(merged);
       setStep('mapping');
+      toast(`Profile loaded — ${match.profile.name}`, 'info');
       return;
     }
 
@@ -158,6 +161,9 @@ export default function App() {
     const { updated } = applySessionEdits(approved, loadLearnings());
     saveLearnings(updated);
     setStep('output');
+    if (approved.length > 0) {
+      toast(`${approved.length} synonym${approved.length !== 1 ? 's' : ''} saved`);
+    }
   }
 
   function handleSaveProfile(name: string) {
@@ -171,8 +177,10 @@ export default function App() {
         usageCount: existing.usageCount + 1,
         createdAt: existing.createdAt,
       } as DistributorProfile);
+      toast(`Profile updated — ${name}`);
     } else {
       saveProfile(profile);
+      toast(`Profile saved — ${name}`);
     }
   }
 
@@ -193,6 +201,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0f1e]">
+      <Toaster />
       {updating && <UpdateOverlay onCancel={() => setUpdating(false)} />}
       <button
         onClick={() => setUpdating(true)}
