@@ -5,7 +5,7 @@ import { PromptDialog } from './components/PromptDialog';
 import { MappingTable } from './components/MappingTable';
 import { LearningReview } from './components/LearningReview';
 import { OutputPanel } from './components/OutputPanel';
-import { UpdateOverlay } from './components/UpdateOverlay';
+import { ProfileManager } from './components/ProfileManager';
 import { Toaster } from './components/Toaster';
 import { toast } from './lib/toast';
 import type { ParsedFile, RawFileData, FieldMapping, UserPrompts, AppStep, PromptNeeds } from './types';
@@ -50,7 +50,7 @@ function clearSession() {
 // ── App ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [updating, setUpdating] = useState(false);
+  const [showProfiles, setShowProfiles] = useState(false);
 
   // Restore from sessionStorage on first render; fall back to defaults.
   // 'preview' can't be restored (rawFile is not persisted), so treat as 'upload'.
@@ -202,13 +202,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0a0f1e]">
       <Toaster />
-      {updating && <UpdateOverlay onCancel={() => setUpdating(false)} />}
+      {showProfiles && <ProfileManager onClose={() => setShowProfiles(false)} />}
       <button
-        onClick={() => setUpdating(true)}
-        title="Check for updates"
+        onClick={() => setShowProfiles(true)}
+        title="Manage profiles"
         className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white bg-slate-900/80 hover:bg-slate-800 backdrop-blur transition-colors"
       >
-        ↻ Update
+        Profiles
       </button>
 
       {step === 'upload' && (
