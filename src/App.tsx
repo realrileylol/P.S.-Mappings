@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { DataPreview } from './components/DataPreview';
 import { PromptDialog } from './components/PromptDialog';
@@ -17,20 +17,71 @@ import {
 } from './lib/profiles';
 import type { ProfileMatch, DistributorProfile } from './lib/profiles';
 
-export default function App() {
-  const [updating, setUpdating]             = useState(false);
-  const [step, setStep]                     = useState<AppStep>('upload');
-  const [rawFile, setRawFile]               = useState<RawFileData | null>(null);
-  const [rawHeaderRow, setRawHeaderRow]     = useState(0);
-  const [parsedFile, setParsedFile]         = useState<ParsedFile | null>(null);
-  const [promptNeeds, setPromptNeeds]       = useState<PromptNeeds | null>(null);
-  const [mappings, setMappings]             = useState<FieldMapping[]>([]);
-  const [sessionEdits, setSessionEdits]     = useState<SessionEdit[]>([]);
-  const [existingLearnings, setExistingLearnings] = useState<LearnedSynonym[]>([]);
-  const [profileMatch, setProfileMatch]     = useState<ProfileMatch | null>(null);
-  const [detectedDistributorName, setDetectedDistributorName] = useState('');
+// ── Session persistence helpers ────────────────────────────────────────────
 
-  // Step 1: file upload → parse raw → show preview
+const SS = {
+  get<T>(key: string): T | null {
+    try { const v = sessionStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; }
+  },
+  set(key: string, val: unknown) {
+    try { sessionStorage.setItem(key, JSON.stringify(val)); } catch { /* quota exceeded – skip */ }
+  },
+  clear(...keys: string[]) {
+    keys.forEach(k => { try { sessionStorage.removeItem(k); } catch {} });
+  },
+};
+
+const KEYS = {
+  step:        'ps_s_step',
+  file:        'ps_s_file',
+  mappings:    'ps_s_mappings',
+  needs:       'ps_s_needs',
+  profile:     'ps_s_profile',
+  distributor: 'ps_s_distributor',
+  edits:       'ps_s_edits',
+};
+
+function clearSession() {
+  SS.clear(...Object.values(KEYS));
+}
+
+// ── App ────────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [updating, setUpdating] = useState(false);
+
+  // Restore from sessionStorage on first render; fall back to defaults.
+  // 'preview' can't be restored (rawFile is not persisted), so treat as 'upload'.
+  const [step, setStep] = useState<AppStep>(() => {
+    const s = SS.get<AppStep>(KEYS.step);
+    return s && s !== 'preview' ? s : 'upload';
+  });
+  const [rawFile, setRawFile]           = useState<RawFileData | null>(null);
+  const [rawHeaderRow, setRawHeaderRow] = useState(0);
+  const [parsedFile, setParsedFile]     = useState<ParsedFile | null>(() => SS.get(KEYS.file));
+  const [promptNeeds, setPromptNeeds]   = useState<PromptNeeds | null>(() => SS.get(KEYS.needs));
+  const [mappings, setMappings]         = useState<FieldMapping[]>(() => SS.get(KEYS.mappings) ?? []);
+  const [sessionEdits, setSessionEdits] = useState<SessionEdit[]>(() => SS.get(KEYS.edits) ?? []);
+  const [existingLearnings, setExistingLearnings] = useState<LearnedSynonym[]>([]);
+  const [profileMatch, setProfileMatch] = useState<ProfileMatch | null>(() => SS.get(KEYS.profile));
+  const [detectedDistributorName, setDetectedDistributorName] = useState<string>(
+    () => SS.get<string>(KEYS.distributor) ?? ''
+  );
+
+  // Persist state to sessionStorage whenever it changes
+  useEffect(() => {
+    if (step === 'upload' || step === 'preview') { clearSession(); return; }
+    SS.set(KEYS.step, step);
+    if (parsedFile)   SS.set(KEYS.file, parsedFile);
+    if (mappings.length) SS.set(KEYS.mappings, mappings);
+    if (promptNeeds)  SS.set(KEYS.needs, promptNeeds);
+    if (profileMatch) SS.set(KEYS.profile, profileMatch);
+    SS.set(KEYS.distributor, detectedDistributorName);
+    if (sessionEdits.length) SS.set(KEYS.edits, sessionEdits);
+  }, [step, parsedFile, mappings, promptNeeds, profileMatch, detectedDistributorName, sessionEdits]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
   async function handleFileSelected(file: File) {
     const raw = await parseFileRaw(file);
     const guessedHeaderRow = detectHeaderRow(raw.rows);
@@ -39,7 +90,6 @@ export default function App() {
     setStep('preview');
   }
 
-  // Step 2: preview confirmed → build ParsedFile → continue to mapping flow
   function handlePreviewConfirmed(file: ParsedFile) {
     setParsedFile(file);
 
@@ -127,6 +177,7 @@ export default function App() {
   }
 
   function handleReset() {
+    clearSession();
     setRawFile(null);
     setParsedFile(null);
     setPromptNeeds(null);
@@ -137,6 +188,8 @@ export default function App() {
     setDetectedDistributorName('');
     setStep('upload');
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#0a0f1e]">
