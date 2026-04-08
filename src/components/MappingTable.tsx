@@ -168,29 +168,26 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
 
   function handleSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
+    if (!val) return;
     if (val === '__literal__') { setShowLiteralInput(true); return; }
     if (val === '__formula__') { setShowFormula(true); setEditing(false); return; }
     let newValue: MappingValueType;
-    if (val === '__null__') {
-      newValue = { type: 'null' };
-    } else {
-      if (DATE_FIELDS.has(mapping.templateField)) {
-        const resolvedDate = detectDateRangeInColumn(val, sampleData);
-        if (resolvedDate) {
-          onChange({ ...mapping, value: { type: 'literal', value: resolvedDate }, confidence: 'hardcoded' }, originalHeader);
-          setEditing(false); return;
-        }
-      }
-      if (EXCEL_DATE_FIELDS.has(mapping.templateField) && detectExcelSerialDatesInColumn(val, sampleData)) {
-        onChange({
-          ...mapping,
-          value: { type: 'computed', expression: `DATEADD(day, [${val}] - 2, '1900-01-01')`, description: `DATEADD([${val}])` },
-          confidence: 'computed',
-        }, originalHeader);
+    if (DATE_FIELDS.has(mapping.templateField)) {
+      const resolvedDate = detectDateRangeInColumn(val, sampleData);
+      if (resolvedDate) {
+        onChange({ ...mapping, value: { type: 'literal', value: resolvedDate }, confidence: 'hardcoded' }, originalHeader);
         setEditing(false); return;
       }
-      newValue = { type: 'column', name: val };
     }
+    if (EXCEL_DATE_FIELDS.has(mapping.templateField) && detectExcelSerialDatesInColumn(val, sampleData)) {
+      onChange({
+        ...mapping,
+        value: { type: 'computed', expression: `DATEADD(day, [${val}] - 2, '1900-01-01')`, description: `DATEADD([${val}])` },
+        confidence: 'computed',
+      }, originalHeader);
+      setEditing(false); return;
+    }
+    newValue = { type: 'column', name: val };
     onChange({ ...mapping, value: newValue, confidence: 'high' }, originalHeader);
     setEditing(false);
   }
@@ -308,17 +305,17 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
             onChange={handleSelect}
             onBlur={() => setEditing(false)}
             className={`${selectClass} w-full`}
-            defaultValue={mapping.value.type === 'column' ? mapping.value.name : '__null__'}
+            defaultValue={mapping.value.type === 'column' ? mapping.value.name : ''}
           >
-            <option value="__null__">— null —</option>
+            <option value="" disabled>Select a column…</option>
             <option value="__literal__">── Hardcode a value ──</option>
             <option value="__formula__">── Build formula (÷ ×) ──</option>
             {clientHeaders.map(h => <option key={h} value={h}>{h}</option>)}
           </select>
         ) : (
-          <div className="flex items-start gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
                 <ValueDisplay value={mapping.value} />
                 {!isLocked && (
                   <button
@@ -326,6 +323,16 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
                     className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-slate-300 transition-all text-[10px] px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 flex-shrink-0"
                   >
                     edit
+                  </button>
+                )}
+                {/* One-click null — only show when field has a value */}
+                {!isLocked && mapping.value.type !== 'null' && (
+                  <button
+                    onClick={() => onChange({ ...mapping, value: { type: 'null' }, confidence: 'none' }, originalHeader)}
+                    title="Clear to null"
+                    className="opacity-0 group-hover:opacity-100 text-slate-700 hover:text-red-400 transition-all text-[10px] px-1 py-0.5 rounded hover:bg-red-950/40 flex-shrink-0"
+                  >
+                    ×
                   </button>
                 )}
               </div>
