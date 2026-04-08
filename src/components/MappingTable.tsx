@@ -330,9 +330,9 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
                   <button
                     onClick={() => onChange({ ...mapping, value: { type: 'null' }, confidence: 'none' }, originalHeader)}
                     title="Clear to null"
-                    className="opacity-0 group-hover:opacity-100 text-slate-700 hover:text-red-400 transition-all text-[10px] px-1 py-0.5 rounded hover:bg-red-950/40 flex-shrink-0"
+                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 hover:bg-red-950/40 transition-all text-[10px] px-2 py-0.5 rounded border border-slate-700 hover:border-red-800 flex-shrink-0"
                   >
-                    ×
+                    null
                   </button>
                 )}
               </div>
