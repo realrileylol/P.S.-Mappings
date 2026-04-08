@@ -149,6 +149,21 @@ export default function App() {
     }
   }
 
+  function handleLoadProfile(profile: DistributorProfile) {
+    if (!parsedFile || !promptNeeds) return;
+    const profileMappings = applyProfile(profile, parsedFile.headers);
+    const autoMappings    = buildMappings(parsedFile.headers, {}, promptNeeds, parsedFile.rows);
+    const profileByField  = new Map(profileMappings.map(pm => [pm.templateField, pm]));
+    const merged = autoMappings.map(am => {
+      const pm = profileByField.get(am.templateField);
+      return pm && pm.value.type !== 'null' ? pm : am;
+    });
+    setMappings(merged);
+    setProfileMatch({ profile, score: 1.0, matchedOn: 'manual' });
+    setStep('mapping');
+    toast(`Profile loaded — ${profile.name}`, 'info');
+  }
+
   function handleMappingContinue(edits: SessionEdit[]) {
     setSessionEdits(edits);
     const learnable = edits.filter(e => e.correctedHeader && e.correctedHeader !== e.originalHeader);
@@ -202,7 +217,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0a0f1e]">
       <Toaster />
-      {showProfiles && <ProfileManager onClose={() => setShowProfiles(false)} />}
+      {showProfiles && (
+        <ProfileManager
+          onClose={() => setShowProfiles(false)}
+          onLoad={parsedFile && promptNeeds ? handleLoadProfile : undefined}
+        />
+      )}
       <button
         onClick={() => setShowProfiles(true)}
         title="Manage profiles"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Pencil, Trash2, BookOpen } from 'lucide-react';
+import { X, Pencil, Trash2, BookOpen, Download } from 'lucide-react';
 import { loadProfiles, saveProfiles, deleteProfile } from '../lib/profiles';
 import type { DistributorProfile } from '../lib/profiles';
 
@@ -31,9 +31,10 @@ function timeAgo(iso: string): string {
 
 interface Props {
   onClose: () => void;
+  onLoad?: (profile: DistributorProfile) => void; // undefined = no file loaded yet
 }
 
-export function ProfileManager({ onClose }: Props) {
+export function ProfileManager({ onClose, onLoad }: Props) {
   const [profiles, setProfiles] = useState<DistributorProfile[]>([]);
   const [editingId, setEditingId]       = useState<string | null>(null);
   const [editName, setEditName]         = useState('');
@@ -164,6 +165,16 @@ export function ProfileManager({ onClose }: Props) {
                       {/* Actions — only visible on hover when not in edit/confirm mode */}
                       {!isEditing && !isConfirming && (
                         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                          {onLoad && (
+                            <button
+                              onClick={() => { onLoad(p); onClose(); }}
+                              title="Apply to current file"
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-blue-400 hover:text-white hover:bg-blue-600 border border-blue-700/50 hover:border-blue-600 transition-colors mr-1"
+                            >
+                              <Download className="w-3 h-3" />
+                              Load
+                            </button>
+                          )}
                           <button
                             onClick={() => startEdit(p)}
                             title="Rename"
