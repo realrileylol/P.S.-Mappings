@@ -41,6 +41,6 @@ export interface PromptNeeds {
   detectedFacilityName?: string;
   detectedFacilityId?: string;
   detectedDate?: string;
-  resolvedDate?: string;   // parsed last-day-of-range when date column has range values
+  resolvedDateValue?: MappingValueType; // literal or computed value resolved from date column
   detectedSupplierName?: string;
 }

@@ -111,7 +111,7 @@ export default function App() {
 
     if (match) {
       const profileMappings = applyProfile(match.profile, file.headers);
-      const autoMappings    = buildMappings(file.headers, {}, needs, file.rows);
+      const autoMappings    = buildMappings(file.headers, {}, needs);
       const profileByField  = new Map(profileMappings.map(pm => [pm.templateField, pm]));
       const merged = autoMappings.map(am => {
         const pm = profileByField.get(am.templateField);
@@ -120,12 +120,13 @@ export default function App() {
       setMappings(merged);
       setStep('mapping');
       toast(`Profile loaded — ${match.profile.name}`, 'info');
+      saveProfile({ ...match.profile, lastUsed: new Date().toISOString(), usageCount: match.profile.usageCount + 1 });
       return;
     }
 
     const anyNeeded = needs.needsFacilityId || needs.needsFacilityName || needs.needsDate || needs.needsSupplierName;
     if (!anyNeeded) {
-      setMappings(buildMappings(file.headers, {}, needs, file.rows));
+      setMappings(buildMappings(file.headers, {}, needs));
       setStep('mapping');
     } else {
       setStep('prompts');
@@ -134,7 +135,7 @@ export default function App() {
 
   function handlePromptsComplete(prompts: UserPrompts) {
     if (!parsedFile || !promptNeeds) return;
-    setMappings(buildMappings(parsedFile.headers, prompts, promptNeeds, parsedFile.rows));
+    setMappings(buildMappings(parsedFile.headers, prompts, promptNeeds));
     setStep('mapping');
   }
 
@@ -151,17 +152,19 @@ export default function App() {
 
   function handleLoadProfile(profile: DistributorProfile) {
     if (!parsedFile || !promptNeeds) return;
-    const profileMappings = applyProfile(profile, parsedFile.headers);
-    const autoMappings    = buildMappings(parsedFile.headers, {}, promptNeeds, parsedFile.rows);
+    const updated = { ...profile, lastUsed: new Date().toISOString(), usageCount: profile.usageCount + 1 };
+    saveProfile(updated);
+    const profileMappings = applyProfile(updated, parsedFile.headers);
+    const autoMappings    = buildMappings(parsedFile.headers, {}, promptNeeds);
     const profileByField  = new Map(profileMappings.map(pm => [pm.templateField, pm]));
     const merged = autoMappings.map(am => {
       const pm = profileByField.get(am.templateField);
       return pm && pm.value.type !== 'null' ? pm : am;
     });
     setMappings(merged);
-    setProfileMatch({ profile, score: 1.0, matchedOn: 'manual' });
+    setProfileMatch({ profile: updated, score: 1.0, matchedOn: 'manual' });
     setStep('mapping');
-    toast(`Profile loaded — ${profile.name}`, 'info');
+    toast(`Profile loaded — ${updated.name}`, 'info');
   }
 
   function handleMappingContinue(edits: SessionEdit[]) {

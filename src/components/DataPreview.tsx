@@ -59,7 +59,7 @@ export function DataPreview({ raw, initialHeaderRow, onConfirm, onNewFile }: Pro
   const tableRef = useRef<HTMLDivElement>(null);
 
   const totalRows = raw.rows.length;
-  const totalCols = Math.max(...raw.rows.slice(0, Math.min(20, totalRows)).map(r => r.length), 0);
+  const totalCols = raw.rows.slice(0, Math.min(20, totalRows)).reduce((acc, r) => Math.max(acc, r.length), 0);
 
   // Visible row indices
   const topEnd      = showAll ? totalRows : Math.min(DEFAULT_SHOW, totalRows);

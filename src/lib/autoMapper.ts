@@ -105,6 +105,14 @@ function makeExcelDateComputed(columnName: string): MappingValueType {
   };
 }
 
+// Resolves a date column to a literal (range) or computed (Excel serial) value, or null if plain date.
+export function resolveDateValue(header: string, rows: Record<string, string>[]): MappingValueType | null {
+  const rangeDate = detectDateRangeInColumn(header, rows);
+  if (rangeDate) return { type: 'literal', value: rangeDate };
+  if (detectExcelSerialDatesInColumn(header, rows)) return makeExcelDateComputed(header);
+  return null;
+}
+
 // ── Price computation expression ────────────────────────────────────────────
 function makePriceComputed(totalCol: string, qtyCol: string): MappingValueType {
   return {
@@ -114,7 +122,6 @@ function makePriceComputed(totalCol: string, qtyCol: string): MappingValueType {
   };
 }
 
-// After all fields are mapped, ensure price is computed if total+qty exist but no price
 function resolveComputedPrice(mappings: FieldMapping[]): FieldMapping[] {
   const totalMapping = mappings.find(m => m.templateField === 'TotalInvoiceAmount');
   const qtyMapping = mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity');
@@ -149,6 +156,51 @@ function resolveComputedPrice(mappings: FieldMapping[]): FieldMapping[] {
   });
 }
 
+// Mirror targets that should sync with their source on every mapping change
+const LIVE_MIRRORS: Record<string, string> = {
+  POUnitofMeasurePrice:    'InvoiceUnitofMeasurePrice',
+  POUnitofMeasureQuantity: 'InvoiceUnitofMeasureQuantity',
+  POUnitofMeasure:         'InvoiceUnitofMeasure',
+  AmountPaid:              'TotalInvoiceAmount',
+};
+
+// Canonical post-processor: mirrors, Price = Total÷Qty, Total = Qty×Price.
+// Called both at the end of buildMappings and from MappingTable on every user edit.
+export function applyMappingPostPass(mappings: FieldMapping[]): FieldMapping[] {
+  const valMap: Record<string, MappingValueType> = {};
+  for (const m of mappings) valMap[m.templateField] = m.value;
+
+  let result = mappings.map(m => {
+    const sourceField = LIVE_MIRRORS[m.templateField];
+    if (!sourceField) return m;
+    const sourceVal = valMap[sourceField];
+    if (!sourceVal || sourceVal.type === 'null') return m;
+    if (m.value.type === 'null' || m.confidence === 'computed' || m.confidence === 'high' || m.confidence === 'none') {
+      return { ...m, value: sourceVal };
+    }
+    return m;
+  });
+
+  result = resolveComputedPrice(result);
+
+  const qtyM   = result.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity');
+  const priceM = result.find(m => m.templateField === 'InvoiceUnitofMeasurePrice');
+  const qtyCol   = qtyM?.value.type   === 'column' ? qtyM.value.name   : null;
+  const priceCol = priceM?.value.type === 'column' ? priceM.value.name : null;
+  if (qtyCol && priceCol) {
+    const expr = `TRY_CAST([${qtyCol}] AS FLOAT) * TRY_CAST([${priceCol}] AS FLOAT)`;
+    const computed: MappingValueType = { type: 'computed', expression: expr, description: `[${qtyCol}] × [${priceCol}]` };
+    result = result.map(m => {
+      if (m.templateField === 'TotalInvoiceAmount' && (m.value.type === 'null' || m.confidence === 'computed')) {
+        return { ...m, value: computed, confidence: 'computed' as const };
+      }
+      return m;
+    });
+  }
+
+  return result;
+}
+
 export function detectPromptNeeds(
   headers: string[],
   rows: Record<string, string>[] = []
@@ -171,16 +223,11 @@ export function detectPromptNeeds(
       needs.detectedFacilityName = h;
     }
     if (['date', 'invoice date', 'po date', 'posting date', 'order date'].some(s => n.includes(s))) {
-      // Check if values are date ranges — if so, parse and hardcode
-      const rangeDate = rows.length > 0 ? detectDateRangeInColumn(h, rows) : null;
-      if (rangeDate) {
-        // Treat as a hardcoded date — no column mapping needed
-        needs.needsDate = false;
-        needs.detectedDate = h;
-        needs.resolvedDate = rangeDate; // parsed last-day-of-range
-      } else {
-        needs.needsDate = false;
-        needs.detectedDate = h;
+      needs.needsDate = false;
+      needs.detectedDate = h;
+      if (rows.length > 0) {
+        const resolved = resolveDateValue(h, rows);
+        if (resolved) needs.resolvedDateValue = resolved;
       }
     }
     if (['vendor name', 'supplier name', 'distributor name', 'vendor', 'supplier', 'distributor'].some(s => n === s || n.includes(s))) {
@@ -195,8 +242,7 @@ export function detectPromptNeeds(
 export function buildMappings(
   headers: string[],
   userPrompts: UserPrompts,
-  promptNeeds: PromptNeeds,
-  _rows: Record<string, string>[] = []
+  promptNeeds: PromptNeeds
 ): FieldMapping[] {
   const convHeaders = headers.filter(isConvHeader);
   const totalHeaders = headers.filter(isTotalHeader);
@@ -247,17 +293,13 @@ export function buildMappings(
       return { templateField: field, value: { type: 'null' }, confidence: 'none' };
     }
 
-    // 4. Date fields — handle range values and Excel serial dates
+    // 4. Date fields
     if (config.isDate && (field === 'InvoiceDate' || field === 'PODate')) {
-      // Date range already resolved (e.g. "03/2025-01/2026" → "01-31-2026")
-      if (promptNeeds.resolvedDate) {
-        return { templateField: field, value: { type: 'literal', value: promptNeeds.resolvedDate }, confidence: 'hardcoded' };
+      if (promptNeeds.resolvedDateValue) {
+        const confidence = promptNeeds.resolvedDateValue.type === 'computed' ? 'computed' as const : 'hardcoded' as const;
+        return { templateField: field, value: promptNeeds.resolvedDateValue, confidence };
       }
       if (!promptNeeds.needsDate && promptNeeds.detectedDate) {
-        // Check for Excel serial dates in the column
-        if (_rows.length > 0 && detectExcelSerialDatesInColumn(promptNeeds.detectedDate, _rows)) {
-          return { templateField: field, value: makeExcelDateComputed(promptNeeds.detectedDate), confidence: 'computed' };
-        }
         return { templateField: field, value: { type: 'column', name: promptNeeds.detectedDate }, confidence: 'high' };
       }
       if (userPrompts.date) {
@@ -345,9 +387,11 @@ export function buildMappings(
     if (!source) return m;
 
     if (config.isDate) {
-      // Date mirrors: use resolvedDate or userPrompts.date if available
-      const dateVal = promptNeeds.resolvedDate ?? userPrompts.date;
-      if (dateVal) return { ...m, value: { type: 'literal' as const, value: dateVal }, confidence: 'hardcoded' as const };
+      if (promptNeeds.resolvedDateValue) {
+        const confidence = promptNeeds.resolvedDateValue.type === 'computed' ? 'computed' as const : 'hardcoded' as const;
+        return { ...m, value: promptNeeds.resolvedDateValue, confidence };
+      }
+      if (userPrompts.date) return { ...m, value: { type: 'literal' as const, value: userPrompts.date }, confidence: 'hardcoded' as const };
     }
 
     if (source.type !== 'null') {
@@ -357,6 +401,5 @@ export function buildMappings(
     return m;
   });
 
-  // Third pass: compute price from total ÷ qty if price is still unresolved
-  return resolveComputedPrice(withMirrors);
+  return applyMappingPostPass(withMirrors);
 }

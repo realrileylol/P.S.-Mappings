@@ -1,14 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { ChevronRight, Lock, Zap, AlertCircle, CheckCircle2, HelpCircle, Hash, Brain } from 'lucide-react';
 import type { FieldMapping, MappingValueType, ConfidenceLevel } from '../types';
 import type { SessionEdit } from '../lib/learnings';
 import type { ProfileMatch } from '../lib/profiles';
 import { MatchedProfileBanner } from './ProfileBanner';
 import { NewFileButton } from './NewFileButton';
-import { detectDateRangeInColumn, detectExcelSerialDatesInColumn } from '../lib/autoMapper';
+import { resolveDateValue, applyMappingPostPass } from '../lib/autoMapper';
 
 const DATE_FIELDS = new Set(['InvoiceDate', 'PODate', 'PostingDate']);
-const EXCEL_DATE_FIELDS = new Set(['InvoiceDate', 'PODate']);
 
 interface Props {
   mappings: FieldMapping[];
@@ -171,24 +170,15 @@ function MappingRow({ mapping, clientHeaders, sampleData, wasEdited, onChange }:
     if (!val) return;
     if (val === '__literal__') { setShowLiteralInput(true); return; }
     if (val === '__formula__') { setShowFormula(true); setEditing(false); return; }
-    let newValue: MappingValueType;
     if (DATE_FIELDS.has(mapping.templateField)) {
-      const resolvedDate = detectDateRangeInColumn(val, sampleData);
-      if (resolvedDate) {
-        onChange({ ...mapping, value: { type: 'literal', value: resolvedDate }, confidence: 'hardcoded' }, originalHeader);
+      const resolved = resolveDateValue(val, sampleData);
+      if (resolved) {
+        const confidence = resolved.type === 'computed' ? 'computed' as const : 'hardcoded' as const;
+        onChange({ ...mapping, value: resolved, confidence }, originalHeader);
         setEditing(false); return;
       }
     }
-    if (EXCEL_DATE_FIELDS.has(mapping.templateField) && detectExcelSerialDatesInColumn(val, sampleData)) {
-      onChange({
-        ...mapping,
-        value: { type: 'computed', expression: `DATEADD(day, [${val}] - 2, '1900-01-01')`, description: `DATEADD([${val}])` },
-        confidence: 'computed',
-      }, originalHeader);
-      setEditing(false); return;
-    }
-    newValue = { type: 'column', name: val };
-    onChange({ ...mapping, value: newValue, confidence: 'high' }, originalHeader);
+    onChange({ ...mapping, value: { type: 'column', name: val }, confidence: 'high' }, originalHeader);
     setEditing(false);
   }
 
@@ -364,73 +354,24 @@ function SectionRow({ label, mappedCount, total }: { label: string; mappedCount:
 
 export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch, onMappingsChange, onContinue, onProfileOverride, onNewFile }: Props) {
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
-  const editsRef = useRef<Map<string, SessionEdit>>(new Map());
+  const [editsMap, setEditsMap] = useState<Map<string, SessionEdit>>(() => new Map());
 
-  const MIRRORS: Record<string, string> = {
-    'POUnitofMeasurePrice':    'InvoiceUnitofMeasurePrice',
-    'POUnitofMeasureQuantity': 'InvoiceUnitofMeasureQuantity',
-    'POUnitofMeasure':         'InvoiceUnitofMeasure',
-    'AmountPaid':              'TotalInvoiceAmount',
-  };
-
-  const mirrorSourceKey = ['InvoiceUnitofMeasurePrice','InvoiceUnitofMeasureQuantity','InvoiceUnitofMeasure','TotalInvoiceAmount']
-    .map(f => JSON.stringify(mappings.find(m => m.templateField === f)?.value ?? null))
-    .join('|');
-
-  useEffect(() => {
-    const sourceMap: Record<string, MappingValueType | undefined> = {};
-    for (const m of mappings) sourceMap[m.templateField] = m.value;
-    let changed = false;
-    const next = mappings.map(m => {
-      const sourceField = MIRRORS[m.templateField];
-      if (!sourceField) return m;
-      const sourceVal = sourceMap[sourceField];
-      if (!sourceVal || sourceVal.type === 'null') return m;
-      if (m.value.type === 'null' || m.confidence === 'computed' || m.confidence === 'high' || m.confidence === 'none') {
-        changed = true;
-        return { ...m, value: sourceVal, confidence: m.confidence };
-      }
-      return m;
-    });
-    if (changed) onMappingsChange(next);
-  }, [mirrorSourceKey]);
-
-  const qtyPriceKey = [
-    JSON.stringify(mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity')?.value ?? null),
-    JSON.stringify(mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice')?.value ?? null),
-  ].join('|');
-
-  useEffect(() => {
-    const qtyM   = mappings.find(m => m.templateField === 'InvoiceUnitofMeasureQuantity');
-    const priceM = mappings.find(m => m.templateField === 'InvoiceUnitofMeasurePrice');
-    const qtyCol   = qtyM?.value.type   === 'column' ? qtyM.value.name   : null;
-    const priceCol = priceM?.value.type === 'column' ? priceM.value.name : null;
-    if (!qtyCol || !priceCol) return;
-    const expr = `TRY_CAST([${qtyCol}] AS FLOAT) * TRY_CAST([${priceCol}] AS FLOAT)`;
-    const computed = { type: 'computed' as const, expression: expr, description: `[${qtyCol}] × [${priceCol}]` };
-    let changed = false;
-    const next = mappings.map(m => {
-      if (m.templateField === 'TotalInvoiceAmount' && (m.value.type === 'null' || m.confidence === 'computed')) {
-        changed = true;
-        return { ...m, value: computed, confidence: 'computed' as const };
-      }
-      return m;
-    });
-    if (changed) onMappingsChange(next);
-  }, [qtyPriceKey]);
-
-  const nullCount          = mappings.filter(m => m.value.type === 'null').length;
-  const matchedCount       = mappings.filter(m => m.value.type !== 'null').length;
-  const lowConfidence      = mappings.filter(m => m.confidence === 'low' || m.confidence === 'medium').length;
-  const missingRequired    = mappings.filter(m => REQUIRED_FIELDS.has(m.templateField) && m.value.type === 'null').length;
-  const editCount          = editsRef.current.size;
+  const nullCount       = mappings.filter(m => m.value.type === 'null').length;
+  const matchedCount    = mappings.filter(m => m.value.type !== 'null').length;
+  const lowConfidence   = mappings.filter(m => m.confidence === 'low' || m.confidence === 'medium').length;
+  const missingRequired = mappings.filter(m => REQUIRED_FIELDS.has(m.templateField) && m.value.type === 'null').length;
+  const editCount       = editsMap.size;
 
   function handleChange(index: number, updated: FieldMapping, originalHeader: string | null) {
     const next = [...mappings];
     next[index] = updated;
-    onMappingsChange(next);
+    onMappingsChange(applyMappingPostPass(next));
     const correctedHeader = updated.value.type === 'column' ? updated.value.name : null;
-    editsRef.current.set(updated.templateField, { templateField: updated.templateField, originalHeader, correctedHeader });
+    setEditsMap(prev => {
+      const m = new Map(prev);
+      m.set(updated.templateField, { templateField: updated.templateField, originalHeader, correctedHeader });
+      return m;
+    });
   }
 
   // Build section-aware render list
@@ -453,7 +394,7 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
         mapping={m}
         clientHeaders={clientHeaders}
         sampleData={sampleData}
-        wasEdited={editsRef.current.has(m.templateField)}
+        wasEdited={editsMap.has(m.templateField)}
         onChange={(updated, orig) => handleChange(i, updated, orig)}
       />
     );
@@ -490,7 +431,7 @@ export function MappingTable({ mappings, clientHeaders, sampleData, profileMatch
               </>}
             </div>
             <button
-              onClick={() => onContinue(Array.from(editsRef.current.values()))}
+              onClick={() => onContinue(Array.from(editsMap.values()))}
               className={`flex items-center gap-1.5 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors
                 ${missingRequired > 0 ? 'bg-red-600 hover:bg-red-500' : 'bg-blue-600 hover:bg-blue-500'}`}
             >
